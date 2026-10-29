@@ -1,0 +1,1640 @@
+openapi: 3.1.0
+info:
+  title: Slotted API
+  version: 0.1.0
+  summary: Booking API for shared spaces such as study rooms, sports courts and meeting rooms.
+  description: |
+    Contract-first API for Slotted. The server implementation and the web client's types are generated
+    from or checked against this file, so change it first and in the same pull request as the code.
+
+    **Conventions**
+
+    - All times are ISO-8601 with an offset. Responses render instants in the facility's zone
+      (`2026-11-03T14:00:00+08:00`). Requests without an offset are rejected. Plain dates mean that
+      date in Asia/Singapore. See ADR-0003.
+    - Slots are half-open `[start, end)` on 30-minute boundaries.
+    - Errors use RFC 9457 problem details (`application/problem+json`) with a stable `code`.
+    - `x-roles` on an operation lists the roles allowed to call it. Managers are also limited to the
+      facilities they manage, and students to their own bookings and waitlist entries.
+    - Lists are paginated with `page` (0-based) and `size` (max 100).
+    - Health checks (`/actuator/health`) and Swagger UI are served outside `/api/v1` and are not part
+      of this contract.
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local development
+security:
+  - bearerAuth: []
+tags:
+  - name: Auth
+    description: Registration, sign-in and token refresh (ADR-0002)
+  - name: Facilities
+    description: Facilities, opening hours, managers and blackouts
+  - name: Rooms
+    description: Bookable rooms in a facility
+  - name: Availability
+    description: Free and taken slots, evaluated at request time
+  - name: Bookings
+    description: Create, list, cancel and end bookings
+  - name: Series
+    description: Recurring bookings with partial-conflict handling
+  - name: Waitlist
+    description: Waiting for a taken slot, with auto-promotion
+  - name: Check-in
+    description: QR code check-in and token rotation
+  - name: Admin
+    description: Users and audit log
+  - name: Analytics
+    description: Utilisation and attendance
+  - name: Maintenance
+    description: Scheduled cleanup called by GitHub Actions (ADR-0004)
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      operationId: register
+      summary: Create a student account and sign in
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '201':
+          description: Account created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      summary: Sign in with email and password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Signed in
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: refreshTokens
+      summary: Exchange a refresh token for new tokens (rotation)
+      description: The old refresh token is revoked. Reusing a revoked token revokes the whole family (ADR-0002).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshRequest' }
+      responses:
+        '200':
+          description: New token pair
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      summary: Revoke the refresh token family
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshRequest' }
+      responses:
+        '204': { description: Signed out }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+
+  /me:
+    get:
+      tags: [Auth]
+      operationId: getCurrentUser
+      summary: The signed-in user, including suspension status and managed facilities
+      x-roles: [STUDENT, MANAGER, ADMIN]
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CurrentUser' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /facilities:
+    get:
+      tags: [Facilities]
+      operationId: listFacilities
+      summary: List facilities
+      x-roles: [STUDENT, MANAGER, ADMIN]
+      responses:
+        '200':
+          description: All facilities
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Facility' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    post:
+      tags: [Facilities]
+      operationId: createFacility
+      summary: Create a facility
+      x-roles: [ADMIN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FacilityInput' }
+      responses:
+        '201':
+          description: Created
+          headers:
+            Location: { $ref: '#/components/headers/Location' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Facility' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /facilities/{facilityId}:
+    parameters:
+      - $ref: '#/components/parameters/FacilityId'
+    get:
+      tags: [Facilities]
+      operationId: getFacility
+      summary: Get a facility with its opening hours
+      x-roles: [STUDENT, MANAGER, ADMIN]
+      responses:
+        '200':
+          description: Facility
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Facility' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Facilities]
+      operationId: updateFacility
+      summary: Update name, description or location
+      x-roles: [MANAGER, ADMIN]
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FacilityPatch' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Facility' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+
+  /facilities/{facilityId}/opening-hours:
+    parameters:
+      - $ref: '#/components/parameters/FacilityId'
+    put:
+      tags: [Facilities]
+      operationId: replaceOpeningHours
+      summary: Replace the weekly opening hours
+      description: |
+        Days missing from the list are closed. Future bookings that fall outside the new hours are
+        cancelled with an email (BR-31). Call with `dryRun=true` first to see the impact.
+      x-roles: [MANAGER, ADMIN]
+      parameters:
+        - $ref: '#/components/parameters/DryRun'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              maxItems: 7
+              items: { $ref: '#/components/schemas/OpeningHours' }
+      responses:
+        '200':
+          description: Impact of the change (applied unless `dryRun=true`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImpactPreview' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /facilities/{facilityId}/managers:
+    parameters:
+      - $ref: '#/components/parameters/FacilityId'
+    put:
+      tags: [Facilities]
+      operationId: replaceFacilityManagers
+      summary: Set which managers manage this facility
+      x-roles: [ADMIN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userIds]
+              properties:
+                userIds:
+                  type: array
+                  maxItems: 50
+                  uniqueItems: true
+                  items: { type: string, format: uuid }
+      responses:
+        '204': { description: Managers replaced }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/RuleViolation' }
+
+  /facilities/{facilityId}/rooms:
+    parameters:
+      - $ref: '#/components/parameters/FacilityId'
+    get:
+      tags: [Rooms]
+      operationId: listRooms
+      summary: List rooms in a facility
+      x-roles: [STUDENT, MANAGER, ADMIN]
+      parameters:
+        - name: type
+          in: query
+          schema: { $ref: '#/components/schemas/RoomType' }
+        - name: includeInactive
+          in: query
+          description: Only honoured for managers of this facility and admins.
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: Rooms
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Room' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Rooms]
+      operationId: createRoom
+      summary: Add a room
+      x-roles: [MANAGER, ADMIN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RoomInput' }
+      responses:
+        '201':
+          description: Created
+          headers:
+            Location: { $ref: '#/components/headers/Location' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Room' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /facilities/{facilityId}/blackouts:
+    parameters:
+      - $ref: '#/components/parameters/FacilityId'
+    get:
+      tags: [Facilities]
+      operationId: listBlackouts
+      summary: List blackouts that overlap a period
+      x-roles: [STUDENT, MANAGER, ADMIN]
+      parameters:
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+      responses:
+        '200':
+          description: Blackouts
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Blackout' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Facilities]
+      operationId: createBlackout
+      summary: Block a room or the whole facility
+      description: |
+        Active bookings inside the blackout are cancelled with the blackout reason and the students are
+        emailed. Waitlist entries inside it expire (BR-31). Call with `dryRun=true` first.
+      x-roles: [MANAGER, ADMIN]
+      parameters:
+        - $ref: '#/components/parameters/DryRun'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BlackoutInput' }
+      responses:
+        '200':
+          description: Dry run only; nothing saved
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImpactPreview' }
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Blackout' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /blackouts/{blackoutId}:
+    parameters:
+      - name: blackoutId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      tags: [Facilities]
+      operationId: deleteBlackout
+      summary: Remove a blackout that has not ended (cancelled bookings are not restored)
+      x-roles: [MANAGER, ADMIN]
+      responses:
+        '204': { description: Removed }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/RuleViolation' }
+
+  /facilities/{facilityId}/availability:
+    parameters:
+      - $ref: '#/components/parameters/FacilityId'
+    get:
+      tags: [Availability]
+      operationId: getFacilityAvailability
+      summary: Timeline of every active room in a facility for one day
+      description: |
+        Returns 30-minute cells per room. Effective status is evaluated at request time, so a booking
+        that became a no-show is already shown as free (ADR-0004). Other people's bookings show as
+        `BOOKED` without names; the caller's own bookings show as `MINE`.
+      x-roles: [STUDENT, MANAGER, ADMIN]
+      parameters:
+        - $ref: '#/components/parameters/Date'
+        - name: type
+          in: query
+          schema: { $ref: '#/components/schemas/RoomType' }
+      responses:
+        '200':
+          description: Availability
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FacilityAvailability' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /rooms/{roomId}:
+    parameters:
+      - $ref: '#/components/parameters/RoomId'
+    get:
+      tags: [Rooms]
+      operationId: getRoom
+      summary: Get a room
+      x-roles: [STUDENT, MANAGER, ADMIN]
+      responses:
+        '200':
+          description: Room
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Room' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Rooms]
+      operationId: updateRoom
+      summary: Update a room, or deactivate it with `active=false`
+      x-roles: [MANAGER, ADMIN]
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RoomPatch' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Room' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+
+  /rooms/{roomId}/check-in-qr:
+    parameters:
+      - $ref: '#/components/parameters/RoomId'
+    get:
+      tags: [Check-in]
+      operationId: getRoomCheckInQr
+      summary: Printable QR code for the room's check-in link
+      x-roles: [MANAGER, ADMIN]
+      responses:
+        '200':
+          description: QR code that encodes `<web origin>/check-in?token=<checkinToken>`
+          content:
+            image/svg+xml:
+              schema: { type: string }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /rooms/{roomId}/check-in-token/rotate:
+    parameters:
+      - $ref: '#/components/parameters/RoomId'
+    post:
+      tags: [Check-in]
+      operationId: rotateCheckInToken
+      summary: Invalidate the current QR code and issue a new one
+      x-roles: [MANAGER, ADMIN]
+      responses:
+        '204': { description: Rotated; the old QR code stops working at once }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /bookings:
+    get:
+      tags: [Bookings]
+      operationId: listBookings
+      summary: Bookings in the caller's managed facilities (admins see all)
+      x-roles: [MANAGER, ADMIN]
+      parameters:
+        - name: facilityId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: roomId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/BookingStatus' }
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Bookings, ordered by start time
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookingPage' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Bookings]
+      operationId: createBooking
+      summary: Book a slot
+      description: |
+        Checks every rule in PRD 5.1. Room overlap is guaranteed by a database exclusion constraint
+        (ADR-0001): if another request wins the same slot, this returns `409` with code `SLOT_TAKEN`
+        and `waitlistable: true`.
+      x-roles: [STUDENT, MANAGER, ADMIN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BookingInput' }
+      responses:
+        '201':
+          description: Confirmed
+          headers:
+            Location: { $ref: '#/components/headers/Location' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Booking' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/RuleViolation' }
+
+  /bookings/mine:
+    get:
+      tags: [Bookings]
+      operationId: listMyBookings
+      summary: The caller's bookings
+      x-roles: [STUDENT, MANAGER, ADMIN]
+      parameters:
+        - name: scope
+          in: query
+          schema:
+            type: string
+            enum: [upcoming, past]
+            default: upcoming
+          description: '`upcoming` is ordered soonest first, `past` most recent first.'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Bookings
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookingPage' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /bookings/{bookingId}:
+    parameters:
+      - $ref: '#/components/parameters/BookingId'
+    get:
+      tags: [Bookings]
+      operationId: getBooking
+      summary: Get a booking (own, or in a managed facility)
+      x-roles: [STUDENT, MANAGER, ADMIN]
+      responses:
+        '200':
+          description: Booking
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Booking' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /bookings/{bookingId}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/BookingId'
+    post:
+      tags: [Bookings]
+      operationId: cancelBooking
+      summary: Cancel a booking
+      description: |
+        Students may cancel their own bookings before they start (BR-12, BR-13). Managers and admins may
+        cancel any active booking in scope and must give a reason (BR-14). The freed slot is offered to
+        the waitlist in the same transaction (BR-26).
+      x-roles: [STUDENT, MANAGER, ADMIN]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CancelRequest' }
+      responses:
+        '200':
+          description: Cancelled
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Booking' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/RuleViolation' }
+
+  /bookings/{bookingId}/end:
+    parameters:
+      - $ref: '#/components/parameters/BookingId'
+    post:
+      tags: [Bookings]
+      operationId: endBookingEarly
+      summary: End a checked-in booking early and release the rest (BR-15)
+      x-roles: [STUDENT, MANAGER, ADMIN]
+      responses:
+        '200':
+          description: Ended; `endAt` moved to the next 30-minute boundary
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Booking' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/RuleViolation' }
+
+  /check-ins:
+    post:
+      tags: [Check-in]
+      operationId: checkIn
+      summary: Check in to the caller's current booking in the room identified by a QR token
+      description: Succeeds only inside the check-in window (BR-16).
+      x-roles: [STUDENT, MANAGER, ADMIN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                  minLength: 16
+                  maxLength: 128
+                  description: The token from the room's QR code
+      responses:
+        '200':
+          description: Checked in
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Booking' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/RuleViolation' }
+
+  /booking-series/preview:
+    post:
+      tags: [Series]
+      operationId: previewSeries
+      summary: Check every occurrence of a recurring booking without saving
+      x-roles: [STUDENT, MANAGER, ADMIN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SeriesInput' }
+      responses:
+        '200':
+          description: One entry per occurrence
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SeriesPreview' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '422': { $ref: '#/components/responses/RuleViolation' }
+
+  /booking-series:
+    post:
+      tags: [Series]
+      operationId: createSeries
+      summary: Create a recurring booking, skipping occurrences that are not bookable (BR-22)
+      description: |
+        Re-checks every occurrence at save time, since the preview may be out of date. Occurrences that
+        fail are skipped and listed. If none can be booked, nothing is saved and `422` is returned with
+        code `SERIES_NOTHING_BOOKABLE`.
+      x-roles: [STUDENT, MANAGER, ADMIN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SeriesInput' }
+      responses:
+        '201':
+          description: Series created
+          headers:
+            Location: { $ref: '#/components/headers/Location' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Series' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '422': { $ref: '#/components/responses/RuleViolation' }
+
+  /booking-series/{seriesId}:
+    parameters:
+      - $ref: '#/components/parameters/SeriesId'
+    get:
+      tags: [Series]
+      operationId: getSeries
+      summary: Get a series and its occurrences
+      x-roles: [STUDENT, MANAGER, ADMIN]
+      responses:
+        '200':
+          description: Series
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Series' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /booking-series/{seriesId}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/SeriesId'
+    post:
+      tags: [Series]
+      operationId: cancelSeries
+      summary: Cancel every occurrence that starts on or after a date (BR-23)
+      x-roles: [STUDENT, MANAGER, ADMIN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fromDate]
+              properties:
+                fromDate:
+                  type: string
+                  format: date
+                reason:
+                  type: string
+                  maxLength: 500
+      responses:
+        '200':
+          description: Series after cancellation
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Series' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/RuleViolation' }
+
+  /waitlist:
+    post:
+      tags: [Waitlist]
+      operationId: joinWaitlist
+      summary: Wait for an exact slot that is taken (BR-24)
+      x-roles: [STUDENT]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SlotRequest' }
+      responses:
+        '201':
+          description: Joined
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WaitlistEntry' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/RuleViolation' }
+
+  /waitlist/mine:
+    get:
+      tags: [Waitlist]
+      operationId: listMyWaitlistEntries
+      summary: The caller's waitlist entries with queue positions
+      x-roles: [STUDENT]
+      responses:
+        '200':
+          description: Entries, waiting ones first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/WaitlistEntry' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /waitlist/{entryId}:
+    parameters:
+      - name: entryId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      tags: [Waitlist]
+      operationId: leaveWaitlist
+      summary: Leave a waitlist
+      x-roles: [STUDENT]
+      responses:
+        '204': { description: Left the waitlist }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/users:
+    get:
+      tags: [Admin]
+      operationId: listUsers
+      summary: Search users
+      x-roles: [ADMIN]
+      parameters:
+        - name: q
+          in: query
+          description: Matches name or email
+          schema: { type: string, maxLength: 100 }
+        - name: role
+          in: query
+          schema: { $ref: '#/components/schemas/Role' }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Users
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserPage' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/users/{userId}:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [Admin]
+      operationId: updateUser
+      summary: Change a user's role or status, or lift a suspension (AD-1)
+      description: |
+        Disabling a user or changing their role revokes all their refresh tokens. Disabling cancels
+        their future bookings. An admin cannot demote or disable themselves (`LAST_ADMIN`).
+      x-roles: [ADMIN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserPatch' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/RuleViolation' }
+
+  /admin/audit-log:
+    get:
+      tags: [Admin]
+      operationId: listAuditLog
+      summary: Search the audit log (AD-3)
+      x-roles: [ADMIN]
+      parameters:
+        - name: entityType
+          in: query
+          schema:
+            type: string
+            enum: [BOOKING, WAITLIST_ENTRY, ROOM, FACILITY, OPENING_HOURS, BLACKOUT, USER]
+        - name: entityId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: actorId
+          in: query
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Audit records, oldest first when filtered by entity, newest first otherwise
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuditPage' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /analytics/utilisation:
+    get:
+      tags: [Analytics]
+      operationId: getUtilisation
+      summary: Room utilisation and attendance for a period (AD-4)
+      description: Managers only see facilities they manage. The period is at most 92 days.
+      x-roles: [MANAGER, ADMIN]
+      parameters:
+        - name: facilityId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: fromDate
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: toDate
+          in: query
+          required: true
+          description: Inclusive
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Utilisation
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UtilisationReport' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /internal/maintenance/sweep:
+    post:
+      tags: [Maintenance]
+      operationId: runMaintenanceSweep
+      summary: Settle overdue no-shows, expire waitlist entries and send queued email (ADR-0004)
+      description: |
+        Called by a scheduled GitHub Actions workflow. Idempotent; overlapping calls skip
+        (`ranSweep: false`). Not authenticated with a JWT.
+      security:
+        - maintenanceKey: []
+      responses:
+        '200':
+          description: What the sweep did
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SweepResult' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 15-minute access token from `/auth/login` or `/auth/refresh` (ADR-0002).
+    maintenanceKey:
+      type: apiKey
+      in: header
+      name: X-Maintenance-Key
+      description: Shared secret held in GitHub Actions secrets and the host's environment.
+
+  headers:
+    Location:
+      description: URL of the created resource
+      schema: { type: string, format: uri-reference }
+
+  parameters:
+    FacilityId:
+      name: facilityId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    RoomId:
+      name: roomId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    BookingId:
+      name: bookingId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    SeriesId:
+      name: seriesId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Date:
+      name: date
+      in: query
+      required: true
+      description: A date in Asia/Singapore
+      schema: { type: string, format: date, examples: ['2026-11-03'] }
+    From:
+      name: from
+      in: query
+      schema: { type: string, format: date-time }
+    To:
+      name: to
+      in: query
+      schema: { type: string, format: date-time }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 0, default: 0 }
+    Size:
+      name: size
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    DryRun:
+      name: dryRun
+      in: query
+      description: When true, only report the impact; nothing is saved.
+      schema: { type: boolean, default: false }
+    IfMatch:
+      name: If-Match
+      in: header
+      description: The `version` last read, for optimistic locking. Mismatch returns 412.
+      schema: { type: string }
+
+  responses:
+    ValidationFailed:
+      description: The request is malformed or a field is invalid (`VALIDATION_FAILED`)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unauthenticated:
+      description: Missing, expired or invalid credentials
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: Signed in but not allowed (wrong role, or outside the caller's facilities)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: Does not exist, or is not visible to the caller
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Conflict:
+      description: Conflicts with existing data, for example `SLOT_TAKEN`, `EMAIL_TAKEN`, `ALREADY_WAITING`
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: https://github.com/EthanYap123/slotted/blob/main/docs/api/errors.md#slot_taken
+            title: This slot was just taken
+            status: 409
+            detail: Another booking for Study Room 3 overlaps 14:00-15:00 SGT on 3 Nov.
+            code: SLOT_TAKEN
+            waitlistable: true
+    PreconditionFailed:
+      description: '`If-Match` does not match the current version (`VERSION_CONFLICT`)'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    RuleViolation:
+      description: The request is well formed but breaks a business rule; `code` says which
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example:
+            type: https://github.com/EthanYap123/slotted/blob/main/docs/api/errors.md#booking_too_long
+            title: Booking is too long
+            status: 422
+            detail: Bookings for this room can be at most 2 hours long.
+            code: BOOKING_TOO_LONG
+    RateLimited:
+      description: Too many requests (`RATE_LIMITED`); see `Retry-After`
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457 problem details
+      required: [type, title, status, code]
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        code: { $ref: '#/components/schemas/ErrorCode' }
+        requestId:
+          type: string
+          description: Matches the `X-Request-Id` response header and the server logs
+        errors:
+          type: array
+          description: Field errors for `VALIDATION_FAILED`
+          items:
+            type: object
+            required: [field, message]
+            properties:
+              field: { type: string }
+              message: { type: string }
+        waitlistable:
+          type: boolean
+          description: For `SLOT_TAKEN`, whether the caller may join the waitlist for this slot
+
+    ErrorCode:
+      type: string
+      enum:
+        - VALIDATION_FAILED
+        - UNAUTHENTICATED
+        - INVALID_CREDENTIALS
+        - REFRESH_TOKEN_INVALID
+        - FORBIDDEN
+        - NOT_FOUND
+        - EMAIL_TAKEN
+        - WEAK_PASSWORD
+        - VERSION_CONFLICT
+        - RATE_LIMITED
+        - SLOT_TAKEN
+        - NOT_ALIGNED
+        - BOOKING_TOO_SHORT
+        - BOOKING_TOO_LONG
+        - OUTSIDE_BOOKING_WINDOW
+        - OUTSIDE_OPENING_HOURS
+        - BLACKOUT
+        - OVER_CAPACITY
+        - ROOM_INACTIVE
+        - QUOTA_UPCOMING_EXCEEDED
+        - QUOTA_DAILY_HOURS_EXCEEDED
+        - STUDENT_OVERLAP
+        - SUSPENDED
+        - ALREADY_STARTED
+        - NOT_CANCELLABLE
+        - REASON_REQUIRED
+        - NOT_CHECKED_IN
+        - CHECK_IN_NOT_OPEN
+        - CHECK_IN_CLOSED
+        - NO_BOOKING_TO_CHECK_IN
+        - QR_TOKEN_INVALID
+        - SLOT_AVAILABLE
+        - ALREADY_WAITING
+        - WAITLIST_LIMIT
+        - SERIES_LIMIT
+        - SERIES_TOO_FAR
+        - SERIES_NOTHING_BOOKABLE
+        - BLACKOUT_ENDED
+        - NOT_A_MANAGER
+        - LAST_ADMIN
+
+    Role:
+      type: string
+      enum: [STUDENT, MANAGER, ADMIN]
+    RoomType:
+      type: string
+      enum: [STUDY_ROOM, SPORTS_COURT, MEETING_ROOM]
+    BookingStatus:
+      type: string
+      description: |
+        Effective status at the time of the response (ADR-0004). `COMPLETED` is derived for active
+        bookings whose end has passed and is never stored.
+      enum: [CONFIRMED, CHECKED_IN, COMPLETED, CANCELLED, NO_SHOW]
+
+    RegisterRequest:
+      type: object
+      required: [email, password, fullName]
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        password:
+          type: string
+          minLength: 10
+          maxLength: 128
+          description: Rejected with `WEAK_PASSWORD` if it is in the common-password list
+        fullName: { type: string, minLength: 1, maxLength: 100 }
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        password: { type: string, maxLength: 128 }
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken: { type: string, maxLength: 128 }
+    AuthResponse:
+      type: object
+      required: [accessToken, accessTokenExpiresAt, refreshToken, user]
+      properties:
+        accessToken: { type: string }
+        accessTokenExpiresAt: { type: string, format: date-time }
+        refreshToken: { type: string }
+        user: { $ref: '#/components/schemas/CurrentUser' }
+
+    User:
+      type: object
+      required: [id, email, fullName, role, status, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        fullName: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+        status:
+          type: string
+          enum: [ACTIVE, DISABLED]
+        suspendedUntil:
+          type: [string, 'null']
+          format: date-time
+          description: Derived from recent no-shows (BR-18)
+        createdAt: { type: string, format: date-time }
+    CurrentUser:
+      allOf:
+        - $ref: '#/components/schemas/User'
+        - type: object
+          required: [managedFacilityIds]
+          properties:
+            managedFacilityIds:
+              type: array
+              items: { type: string, format: uuid }
+    UserPatch:
+      type: object
+      minProperties: 1
+      properties:
+        role: { $ref: '#/components/schemas/Role' }
+        status:
+          type: string
+          enum: [ACTIVE, DISABLED]
+        liftSuspension:
+          type: boolean
+          description: Sets `suspension_cleared_at` to now, so earlier no-shows stop counting
+    UserPage:
+      type: object
+      required: [items, page]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/User' }
+        page: { $ref: '#/components/schemas/PageMeta' }
+
+    Facility:
+      type: object
+      required: [id, name, timeZone, openingHours]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: [string, 'null'] }
+        location: { type: [string, 'null'] }
+        timeZone:
+          type: string
+          const: Asia/Singapore
+        openingHours:
+          type: array
+          items: { $ref: '#/components/schemas/OpeningHours' }
+        version: { type: integer }
+    FacilityInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        description: { type: string, maxLength: 1000 }
+        location: { type: string, maxLength: 200 }
+    FacilityPatch:
+      type: object
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        description: { type: [string, 'null'], maxLength: 1000 }
+        location: { type: [string, 'null'], maxLength: 200 }
+    OpeningHours:
+      type: object
+      required: [dayOfWeek, opensAt, closesAt]
+      properties:
+        dayOfWeek:
+          type: string
+          enum: [MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY]
+        opensAt:
+          type: string
+          pattern: '^([01][0-9]|2[0-3]):(00|30)$'
+          examples: ['08:00']
+        closesAt:
+          type: string
+          pattern: '^([01][0-9]|2[0-3]):(00|30)$'
+          description: Must be after `opensAt`; no overnight opening
+          examples: ['22:00']
+
+    Room:
+      type: object
+      required: [id, facilityId, name, type, capacity, maxBookingMinutes, active]
+      properties:
+        id: { type: string, format: uuid }
+        facilityId: { type: string, format: uuid }
+        name: { type: string }
+        type: { $ref: '#/components/schemas/RoomType' }
+        capacity: { type: integer }
+        maxBookingMinutes: { type: integer }
+        active: { type: boolean }
+        version: { type: integer }
+    RoomInput:
+      type: object
+      required: [name, type, capacity]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        type: { $ref: '#/components/schemas/RoomType' }
+        capacity: { type: integer, minimum: 1, maximum: 500 }
+        maxBookingMinutes:
+          type: integer
+          minimum: 30
+          maximum: 240
+          multipleOf: 30
+          default: 120
+    RoomPatch:
+      type: object
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        type: { $ref: '#/components/schemas/RoomType' }
+        capacity: { type: integer, minimum: 1, maximum: 500 }
+        maxBookingMinutes: { type: integer, minimum: 30, maximum: 240, multipleOf: 30 }
+        active: { type: boolean }
+
+    Blackout:
+      type: object
+      required: [id, facilityId, startAt, endAt, reason]
+      properties:
+        id: { type: string, format: uuid }
+        facilityId: { type: string, format: uuid }
+        roomId:
+          type: [string, 'null']
+          format: uuid
+          description: Null when the whole facility is blacked out
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
+        reason: { type: string }
+    BlackoutInput:
+      type: object
+      required: [startAt, endAt, reason]
+      properties:
+        roomId: { type: [string, 'null'], format: uuid }
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
+        reason: { type: string, minLength: 1, maxLength: 200 }
+    ImpactPreview:
+      type: object
+      required: [applied, affectedBookings, affectedWaitlistEntries]
+      properties:
+        applied:
+          type: boolean
+          description: False for a dry run
+        affectedBookings:
+          type: array
+          items: { $ref: '#/components/schemas/BookingSummary' }
+        affectedWaitlistEntries: { type: integer }
+
+    FacilityAvailability:
+      type: object
+      required: [facilityId, date, opensAt, closesAt, rooms]
+      properties:
+        facilityId: { type: string, format: uuid }
+        date: { type: string, format: date }
+        opensAt:
+          type: [string, 'null']
+          format: date-time
+          description: Null when the facility is closed that day
+        closesAt: { type: [string, 'null'], format: date-time }
+        rooms:
+          type: array
+          items: { $ref: '#/components/schemas/RoomAvailability' }
+    RoomAvailability:
+      type: object
+      required: [roomId, roomName, roomType, capacity, maxBookingMinutes, cells]
+      properties:
+        roomId: { type: string, format: uuid }
+        roomName: { type: string }
+        roomType: { $ref: '#/components/schemas/RoomType' }
+        capacity: { type: integer }
+        maxBookingMinutes: { type: integer }
+        cells:
+          type: array
+          description: Consecutive 30-minute cells from opening to closing
+          items: { $ref: '#/components/schemas/AvailabilityCell' }
+    AvailabilityCell:
+      type: object
+      required: [startAt, state]
+      properties:
+        startAt: { type: string, format: date-time }
+        state:
+          type: string
+          enum: [FREE, BOOKED, MINE, BLACKOUT, PAST]
+        bookingId:
+          type: string
+          format: uuid
+          description: Only for `MINE`, or for managers in their facilities
+
+    SlotRequest:
+      type: object
+      required: [roomId, startAt, endAt]
+      properties:
+        roomId: { type: string, format: uuid }
+        startAt: { type: string, format: date-time, examples: ['2026-11-03T14:00:00+08:00'] }
+        endAt: { type: string, format: date-time, examples: ['2026-11-03T15:00:00+08:00'] }
+    BookingInput:
+      allOf:
+        - $ref: '#/components/schemas/SlotRequest'
+        - type: object
+          required: [attendees]
+          properties:
+            attendees: { type: integer, minimum: 1, maximum: 500 }
+            purpose: { type: string, maxLength: 200 }
+    BookingSummary:
+      type: object
+      required: [id, roomId, roomName, startAt, endAt, status]
+      properties:
+        id: { type: string, format: uuid }
+        roomId: { type: string, format: uuid }
+        roomName: { type: string }
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
+        status: { $ref: '#/components/schemas/BookingStatus' }
+        userName:
+          type: string
+          description: Only shown to managers and admins
+    Booking:
+      allOf:
+        - $ref: '#/components/schemas/BookingSummary'
+        - type: object
+          required: [facilityId, facilityName, userId, attendees, source, lateCancellation, createdAt]
+          properties:
+            facilityId: { type: string, format: uuid }
+            facilityName: { type: string }
+            userId: { type: string, format: uuid }
+            seriesId: { type: [string, 'null'], format: uuid }
+            attendees: { type: integer }
+            purpose: { type: [string, 'null'] }
+            source:
+              type: string
+              enum: [DIRECT, SERIES, WAITLIST]
+            checkInOpensAt:
+              type: string
+              format: date-time
+              description: Start minus 10 minutes
+            checkInClosesAt:
+              type: string
+              format: date-time
+              description: Start plus 15 minutes
+            checkedInAt: { type: [string, 'null'], format: date-time }
+            releasedAt: { type: [string, 'null'], format: date-time }
+            cancelledAt: { type: [string, 'null'], format: date-time }
+            cancelReason: { type: [string, 'null'] }
+            lateCancellation: { type: boolean }
+            createdAt: { type: string, format: date-time }
+    BookingPage:
+      type: object
+      required: [items, page]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Booking' }
+        page: { $ref: '#/components/schemas/PageMeta' }
+    CancelRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+          description: Required when a manager or admin cancels someone else's booking (`REASON_REQUIRED`)
+
+    SeriesInput:
+      type: object
+      required: [roomId, firstStartAt, firstEndAt, frequency, occurrences, attendees]
+      properties:
+        roomId: { type: string, format: uuid }
+        firstStartAt: { type: string, format: date-time }
+        firstEndAt: { type: string, format: date-time }
+        frequency:
+          type: string
+          enum: [DAILY, WEEKLY]
+          description: '`DAILY` is for managers and admins only'
+        occurrences: { type: integer, minimum: 2, maximum: 8 }
+        attendees: { type: integer, minimum: 1, maximum: 500 }
+        purpose: { type: string, maxLength: 200 }
+    OccurrenceCheck:
+      type: object
+      required: [startAt, endAt, bookable]
+      properties:
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
+        bookable: { type: boolean }
+        reason:
+          $ref: '#/components/schemas/ErrorCode'
+          description: Why the occurrence cannot be booked
+    SeriesPreview:
+      type: object
+      required: [occurrences, bookableCount]
+      properties:
+        occurrences:
+          type: array
+          items: { $ref: '#/components/schemas/OccurrenceCheck' }
+        bookableCount: { type: integer }
+    Series:
+      type: object
+      required: [id, roomId, frequency, occurrencesRequested, bookings, skipped]
+      properties:
+        id: { type: string, format: uuid }
+        roomId: { type: string, format: uuid }
+        frequency:
+          type: string
+          enum: [DAILY, WEEKLY]
+        occurrencesRequested: { type: integer }
+        bookings:
+          type: array
+          items: { $ref: '#/components/schemas/BookingSummary' }
+        skipped:
+          type: array
+          description: Occurrences not booked at creation, with reasons
+          items: { $ref: '#/components/schemas/OccurrenceCheck' }
+
+    WaitlistEntry:
+      type: object
+      required: [id, roomId, roomName, startAt, endAt, status, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        roomId: { type: string, format: uuid }
+        roomName: { type: string }
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
+        status:
+          type: string
+          enum: [WAITING, PROMOTED, EXPIRED, CANCELLED]
+        position:
+          type: [integer, 'null']
+          minimum: 1
+          description: 1-based queue position while waiting
+        promotedBookingId: { type: [string, 'null'], format: uuid }
+        createdAt: { type: string, format: date-time }
+
+    AuditRecord:
+      type: object
+      required: [id, occurredAt, action, entityType, entityId]
+      properties:
+        id: { type: integer, format: int64 }
+        occurredAt: { type: string, format: date-time }
+        actorId:
+          type: [string, 'null']
+          format: uuid
+          description: Null for system actions
+        actorName: { type: string }
+        action: { type: string, examples: [BOOKING_CANCELLED] }
+        entityType: { type: string }
+        entityId: { type: string, format: uuid }
+        before: { type: [object, 'null'] }
+        after: { type: [object, 'null'] }
+        requestId: { type: [string, 'null'] }
+    AuditPage:
+      type: object
+      required: [items, page]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AuditRecord' }
+        page: { $ref: '#/components/schemas/PageMeta' }
+
+    UtilisationReport:
+      type: object
+      required: [fromDate, toDate, rooms, heatmap]
+      properties:
+        fromDate: { type: string, format: date }
+        toDate: { type: string, format: date }
+        rooms:
+          type: array
+          items:
+            type: object
+            required: [roomId, roomName, openHours, bookedHours, utilisation, bookings, checkInRate, noShowRate, cancellations, lateCancellations]
+            properties:
+              roomId: { type: string, format: uuid }
+              roomName: { type: string }
+              openHours: { type: number }
+              bookedHours: { type: number }
+              utilisation:
+                type: number
+                minimum: 0
+                maximum: 1
+                description: bookedHours / openHours, excluding blackouts
+              bookings: { type: integer }
+              checkInRate: { type: number, minimum: 0, maximum: 1 }
+              noShowRate: { type: number, minimum: 0, maximum: 1 }
+              cancellations: { type: integer }
+              lateCancellations: { type: integer }
+        heatmap:
+          type: array
+          description: Utilisation by weekday and hour, all rooms combined
+          items:
+            type: object
+            required: [dayOfWeek, hour, utilisation]
+            properties:
+              dayOfWeek: { type: integer, minimum: 1, maximum: 7 }
+              hour: { type: integer, minimum: 0, maximum: 23 }
+              utilisation: { type: number, minimum: 0, maximum: 1 }
+
+    SweepResult:
+      type: object
+      required: [ranSweep, noShowsSettled, waitlistPromoted, waitlistExpired, emailsSent, emailsFailed, durationMs]
+      properties:
+        ranSweep:
+          type: boolean
+          description: False if another sweep held the lock
+        noShowsSettled: { type: integer }
+        waitlistPromoted: { type: integer }
+        waitlistExpired: { type: integer }
+        emailsSent: { type: integer }
+        emailsFailed: { type: integer }
+        rowsPurged: { type: integer }
+        durationMs: { type: integer }
+
+    PageMeta:
+      type: object
+      required: [number, size, totalElements, totalPages]
+      properties:
+        number: { type: integer }
+        size: { type: integer }
+        totalElements: { type: integer }
+        totalPages: { type: integer }
