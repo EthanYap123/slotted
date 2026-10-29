@@ -7,4 +7,3 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Added
 
 - Repository bootstrap: MIT licence, `.gitignore`, README and changelog.
-- `docs/COSTS.md`: free-tier limits of every planned service and how the design stays inside them.
