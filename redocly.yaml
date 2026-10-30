@@ -1,0 +1,6 @@
+# Lint rules for docs/api/openapi.yaml
+extends:
+  - recommended
+rules:
+  # The only server until staging exists (Phase 4) is local development.
+  no-server-example.com: off
