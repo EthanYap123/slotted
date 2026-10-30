@@ -8,6 +8,7 @@ Each record explains one significant decision: the context, what was decided, an
 | [0002](0002-authentication-approach.md) | Authentication with short-lived JWTs and rotating refresh tokens | Accepted |
 | [0003](0003-timezone-handling.md) | Store instants in UTC, apply rules in Asia/Singapore | Accepted |
 | [0004](0004-lazy-evaluation-of-time-based-rules.md) | Evaluate time-based rules lazily; a scheduled job only tidies up | Accepted |
+| [0005](0005-spring-boot-3-5-and-maven.md) | Build the API on Spring Boot 3.5 with Maven | Accepted |
 
 ## Adding a record
 
