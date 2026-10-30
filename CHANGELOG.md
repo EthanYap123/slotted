@@ -11,6 +11,11 @@ All notable changes to this project are documented here. The format follows [Kee
 - `web/`: React 19 + TypeScript (strict) on Vite 8 with TanStack Query and React Router; ESLint 9 (typescript-eslint strict, React hooks, jsx-a11y), Prettier, and Vitest with Testing Library; placeholder page showing API status.
 - `docker-compose.yml` for a local Postgres 17 with a health check; example env files for Compose, the API and the web app; local setup instructions in the README.
 - GitHub Actions CI on pull requests and `main`: API build and Testcontainers tests (in a non-Singapore time zone), web lint/format/typecheck/test/build, Compose smoke test, gitleaks secret scan over full history, and one `CI result` check for branch protection. Dependabot for Maven, npm, Actions and Compose.
+- API quality gates in `./mvnw verify`: Spotless (google-java-format), Checkstyle, JaCoCo minimum coverage (80% lines, 70% branches), and ArchUnit rules for layers, the injected `Clock`, constructor injection and feature cycles. CI publishes a coverage summary and report.
+
+### Fixed
+
+- Hikari connection-pool timeouts are given in milliseconds; the duration format stopped the API from starting.
 - Repository bootstrap: MIT licence, `.gitignore`, README and changelog.
 - Phase 0 design documents:
   - `docs/COSTS.md`: free-tier limits of every planned service and how the design stays inside them.

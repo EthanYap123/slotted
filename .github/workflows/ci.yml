@@ -60,6 +60,22 @@ jobs:
           cache: maven
       - name: Build, test and check (Testcontainers uses the runner's Docker)
         run: ./mvnw -B -ntp verify
+      - name: Coverage summary
+        if: always() && hashFiles('api/target/site/jacoco/jacoco.csv') != ''
+        run: |
+          awk -F, 'NR > 1 { lm += $8; lc += $9; bm += $6; bc += $7 }
+            END {
+              printf "### API coverage\n\n| Counter | Covered |\n| --- | --- |\n"
+              printf "| Lines | %.1f%% (%d/%d) |\n", 100 * lc / (lc + lm), lc, lc + lm
+              if (bc + bm > 0) printf "| Branches | %.1f%% (%d/%d) |\n", 100 * bc / (bc + bm), bc, bc + bm
+            }' target/site/jacoco/jacoco.csv >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload coverage report
+        if: always() && hashFiles('api/target/site/jacoco/index.html') != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: api-coverage
+          path: api/target/site/jacoco
+          retention-days: 14
       - name: Upload test reports
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
