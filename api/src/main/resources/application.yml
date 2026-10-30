@@ -14,9 +14,10 @@ spring:
       # Keep no idle connections so Neon can scale to zero when the API is quiet (docs/COSTS.md).
       minimum-idle: 0
       maximum-pool-size: 5
-      idle-timeout: 30s
-      max-lifetime: 10m
-      connection-timeout: 10s
+      # Hikari timeouts are in milliseconds.
+      idle-timeout: 30000
+      max-lifetime: 600000
+      connection-timeout: 10000
   jpa:
     open-in-view: false
     hibernate:
