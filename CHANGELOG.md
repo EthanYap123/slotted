@@ -12,6 +12,9 @@ All notable changes to this project are documented here. The format follows [Kee
 - `docker-compose.yml` for a local Postgres 17 with a health check; example env files for Compose, the API and the web app; local setup instructions in the README.
 - GitHub Actions CI on pull requests and `main`: API build and Testcontainers tests (in a non-Singapore time zone), web lint/format/typecheck/test/build, Compose smoke test, gitleaks secret scan over full history, and one `CI result` check for branch protection. Dependabot for Maven, npm, Actions and Compose.
 - API quality gates in `./mvnw verify`: Spotless (google-java-format), Checkstyle, JaCoCo minimum coverage (80% lines, 70% branches), and ArchUnit rules for layers, the injected `Clock`, constructor injection and feature cycles. CI publishes a coverage summary and report.
+- `CONTRIBUTING.md` (workflow, Conventional Commits, conventions, definition of done), `SECURITY.md`, pull request template and issue forms.
+- Recommended branch protection for `main` as a GitHub ruleset in `.github/rulesets/main.json`, explained in `docs/BRANCH_PROTECTION.md`.
+- Dependabot skips major updates that are deferred on purpose: Spring Boot 4, ESLint 10 and Postgres 18.
 
 ### Fixed
 

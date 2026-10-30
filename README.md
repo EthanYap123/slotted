@@ -4,7 +4,7 @@ A booking system for shared spaces such as study rooms, sports courts and meetin
 
 Key features: conflict-free booking under concurrency, recurring bookings, a waitlist with auto-promotion, QR code check-in, auto-release of no-shows after 15 minutes, email confirmations and an audit log.
 
-**Status:** Phase 0, requirements and design. No application code yet.
+**Status:** Phase 1, repository setup and CI. The API and web app are skeletons; features start in Phase 2.
 
 ## Design documents
 
@@ -55,6 +55,10 @@ On Windows, use `mvnw.cmd` instead of `./mvnw`.
 | `web/.env.local` | Vite dev server and build | [`web/.env.example`](web/.env.example) |
 
 All real `.env` files are git-ignored. Staging and production secrets live only in the hosting dashboards and GitHub Actions secrets.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, commit conventions and definition of done, and [SECURITY.md](SECURITY.md) to report a vulnerability.
 
 ## License
 

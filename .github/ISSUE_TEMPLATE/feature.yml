@@ -1,0 +1,26 @@
+name: Feature or task
+description: New behaviour, or a planned piece of work for a phase
+labels: [enhancement]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: Who needs this and why. Link the PRD story or rule (for example ST-7, BR-26) if there is one.
+    validations:
+      required: true
+  - type: textarea
+    id: done-when
+    attributes:
+      label: Done when
+      description: Testable acceptance criteria.
+      placeholder: |
+        - [ ] Given ..., when ..., then ...
+        - [ ] Tests cover ...
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Design ideas, related ADRs, free-tier limits to keep in mind.
