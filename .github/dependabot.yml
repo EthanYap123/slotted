@@ -8,6 +8,10 @@ updates:
     groups:
       maven-minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      # Staying on Spring Boot 3.5 until after v1.0 (ADR-0005).
+      - dependency-name: org.springframework.boot:spring-boot-starter-parent
+        update-types: [version-update:semver-major]
     commit-message:
       prefix: build(api)
 
@@ -19,6 +23,18 @@ updates:
     groups:
       npm-minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      # eslint-plugin-jsx-a11y does not support ESLint 10 yet.
+      - dependency-name: eslint
+        update-types: [version-update:semver-major]
+      - dependency-name: '@eslint/js'
+        update-types: [version-update:semver-major]
+      # typescript-eslint supports TypeScript below 6.1 only; upgrade both together.
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
+      # Node types stay close to the Node.js version CI uses; upgrade them on purpose with Node itself.
+      - dependency-name: '@types/node'
+        update-types: [version-update:semver-major]
     commit-message:
       prefix: build(web)
 
@@ -33,5 +49,9 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    ignore:
+      # Postgres stays on the same major version as Neon and the Testcontainers image.
+      - dependency-name: postgres
+        update-types: [version-update:semver-major]
     commit-message:
       prefix: chore
