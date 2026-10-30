@@ -2,9 +2,9 @@
 
 | | |
 | --- | --- |
-| Status | Draft for Phase 0 review |
+| Status | Approved for Phase 2: business rules in section 5 reviewed and kept as written |
 | Owner | Ethan Yap |
-| Last updated | 29 October 2026 |
+| Last updated | 30 October 2026 |
 
 ## 1. Problem
 
