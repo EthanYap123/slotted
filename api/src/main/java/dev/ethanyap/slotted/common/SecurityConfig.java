@@ -10,8 +10,8 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 
 /**
- * Baseline security: stateless, no sessions, health checks public, everything else denied until
- * JWT authentication arrives in Phase 2 (ADR-0002).
+ * Baseline security: stateless, no sessions, health checks public, everything else denied until JWT
+ * authentication arrives in Phase 2 (ADR-0002).
  */
 @Configuration(proxyBeanMethods = false)
 public class SecurityConfig {
