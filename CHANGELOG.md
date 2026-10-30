@@ -14,7 +14,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - API quality gates in `./mvnw verify`: Spotless (google-java-format), Checkstyle, JaCoCo minimum coverage (80% lines, 70% branches), and ArchUnit rules for layers, the injected `Clock`, constructor injection and feature cycles. CI publishes a coverage summary and report.
 - `CONTRIBUTING.md` (workflow, Conventional Commits, conventions, definition of done), `SECURITY.md`, pull request template and issue forms.
 - Recommended branch protection for `main` as a GitHub ruleset in `.github/rulesets/main.json`, explained in `docs/BRANCH_PROTECTION.md`.
-- Dependabot skips major updates that are deferred on purpose: Spring Boot 4, ESLint 10 and Postgres 18.
+- Dependabot skips major updates that are deferred on purpose: Spring Boot 4, ESLint 10, TypeScript 7, `@types/node` beyond the Node.js runtime, and Postgres 18.
 
 ### Fixed
 
