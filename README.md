@@ -19,6 +19,43 @@ Key features: conflict-free booking under concurrency, recurring bookings, a wai
 
 Stack: Spring Boot 3 (Java 21), PostgreSQL with Flyway, Spring Security with JWT, React + TypeScript (Vite) with TanStack Query. Everything runs on free tiers ([`docs/COSTS.md`](docs/COSTS.md)).
 
+## Run it locally
+
+You need Java 21 or newer, Node.js 22 or newer and Docker.
+
+```bash
+# 1. Start Postgres 17 (first time: copy the example settings)
+cp .env.example .env
+docker compose up -d --wait
+
+# 2. Start the API on http://localhost:8080 (Flyway migrates the database on startup)
+cp api/.env.example api/.env
+cd api && ./mvnw spring-boot:run
+
+# 3. In another terminal, start the web app on http://localhost:5173
+cp web/.env.example web/.env.local
+cd web && npm ci && npm run dev
+```
+
+On Windows, use `mvnw.cmd` instead of `./mvnw`.
+
+### Checks
+
+| Area | Command | What it runs |
+| --- | --- | --- |
+| API | `cd api && ./mvnw verify` | Unit and integration tests (integration tests need Docker for Testcontainers) |
+| Web | `cd web && npm run lint && npm run typecheck && npm test && npm run build` | ESLint, TypeScript, Vitest, production build |
+
+### Environment files
+
+| File | Used by | Example |
+| --- | --- | --- |
+| `.env` | Docker Compose | [`.env.example`](.env.example) |
+| `api/.env` | API (read by Spring Boot on startup) | [`api/.env.example`](api/.env.example) |
+| `web/.env.local` | Vite dev server and build | [`web/.env.example`](web/.env.example) |
+
+All real `.env` files are git-ignored. Staging and production secrets live only in the hosting dashboards and GitHub Actions secrets.
+
 ## License
 
 [MIT](LICENSE)
