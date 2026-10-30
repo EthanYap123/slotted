@@ -1,6 +1,9 @@
 spring:
   application:
     name: slotted-api
+  config:
+    # Local development settings from api/.env (git-ignored); see api/.env.example.
+    import: optional:file:.env[.properties]
   main:
     banner-mode: off
   datasource:
