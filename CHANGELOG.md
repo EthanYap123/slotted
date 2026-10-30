@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 - `api/`: Spring Boot 3.5 (Java 21) skeleton with Maven wrapper, Flyway baseline migration, Actuator health probes, stateless security baseline and a Testcontainers Postgres 17 integration test.
 - ADR-0005: Spring Boot 3.5 and Maven.
+- `web/`: React 19 + TypeScript (strict) on Vite 8 with TanStack Query and React Router; ESLint 9 (typescript-eslint strict, React hooks, jsx-a11y), Prettier, and Vitest with Testing Library; placeholder page showing API status.
 - Repository bootstrap: MIT licence, `.gitignore`, README and changelog.
 - Phase 0 design documents:
   - `docs/COSTS.md`: free-tier limits of every planned service and how the design stays inside them.
