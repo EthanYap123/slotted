@@ -25,10 +25,13 @@ class ArchitectureTest {
   static final ArchRule DOMAIN_HAS_NO_SPRING_OR_WEB_DEPENDENCIES =
       noClasses()
           .that()
-          .resideInAPackage("..domain..")
+          .resideInAPackage("dev.ethanyap.slotted..domain..")
           .should()
           .dependOnClassesThat()
-          .resideInAnyPackage("org.springframework..", "..web..", "..infrastructure..")
+          .resideInAnyPackage(
+              "org.springframework..",
+              "dev.ethanyap.slotted..web..",
+              "dev.ethanyap.slotted..infrastructure..")
           .allowEmptyShould(true)
           .because("domain rules are plain Java, unit-tested without Spring (ARCHITECTURE.md 3.1)");
 
@@ -36,10 +39,13 @@ class ArchitectureTest {
   static final ArchRule ONLY_THE_WEB_LAYER_USES_WEB_CLASSES =
       noClasses()
           .that()
-          .resideInAnyPackage("..application..", "..domain..", "..infrastructure..")
+          .resideInAnyPackage(
+              "dev.ethanyap.slotted..application..",
+              "dev.ethanyap.slotted..domain..",
+              "dev.ethanyap.slotted..infrastructure..")
           .should()
           .dependOnClassesThat()
-          .resideInAPackage("..web..")
+          .resideInAPackage("dev.ethanyap.slotted..web..")
           .allowEmptyShould(true)
           .because("controllers and DTOs sit at the edge; inner layers must not know about them");
 

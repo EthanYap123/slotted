@@ -33,7 +33,7 @@ erDiagram
 
     app_user {
         uuid id PK
-        citext email UK
+        text email UK "stored lower-cased"
         text password_hash
         text full_name
         text role "STUDENT | MANAGER | ADMIN"
@@ -171,7 +171,7 @@ erDiagram
 
 | Table | Purpose |
 | --- | --- |
-| `app_user` | Accounts and roles. `suspension_cleared_at` lets an admin lift a no-show suspension: only no-shows after it count ([ADR-0004](adr/0004-lazy-evaluation-of-time-based-rules.md)). Suspension itself is derived, not stored. |
+| `app_user` | Accounts and roles. Emails are stored trimmed and lower-cased with a `CHECK (email = lower(email))`, so a plain unique constraint is case-insensitive. (An earlier draft used `citext`; plain `text` keeps Hibernate's schema validation and parameter binding simple.) `suspension_cleared_at` lets an admin lift a no-show suspension: only no-shows after it count ([ADR-0004](adr/0004-lazy-evaluation-of-time-based-rules.md)). Suspension itself is derived, not stored. |
 | `refresh_token` | Hashed refresh tokens with rotation chain (`replaced_by_id`) and family for reuse detection ([ADR-0002](adr/0002-authentication-approach.md)). |
 | `facility` | A venue with its own time zone and opening hours. |
 | `facility_manager` | Which managers manage which facilities (many-to-many). |

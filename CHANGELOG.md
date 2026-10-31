@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- Accounts and sign-in (#35): register, sign in, refresh and sign out, `GET /me`. BCrypt passwords of 10-128 characters checked against 9,000 common passwords; 15-minute HS256 access tokens; refresh tokens stored as SHA-256 hashes, rotated on every use, with reuse revoking the whole session. Sign-in errors never reveal whether an email exists.
+- Every API error is an RFC 9457 problem with a stable `code` and the request's `X-Request-Id`; CORS allows only configured web origins.
 - `api/`: Spring Boot 3.5 (Java 21) skeleton with Maven wrapper, Flyway baseline migration, Actuator health probes, stateless security baseline and a Testcontainers Postgres 17 integration test.
 - ADR-0005: Spring Boot 3.5 and Maven.
 - `web/`: React 19 + TypeScript (strict) on Vite 8 with TanStack Query and React Router; ESLint 9 (typescript-eslint strict, React hooks, jsx-a11y), Prettier, and Vitest with Testing Library; placeholder page showing API status.
