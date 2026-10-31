@@ -1136,6 +1136,7 @@ components:
         - WEAK_PASSWORD
         - VERSION_CONFLICT
         - RATE_LIMITED
+        - INTERNAL_ERROR
         - SLOT_TAKEN
         - NOT_ALIGNED
         - BOOKING_TOO_SHORT

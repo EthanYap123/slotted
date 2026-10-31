@@ -14,6 +14,7 @@ Every error is an RFC 9457 problem (`application/problem+json`) with a stable `c
 | <a id="weak_password"></a>`WEAK_PASSWORD` | 400 | Password too short or too common | ST-1 |
 | <a id="version_conflict"></a>`VERSION_CONFLICT` | 412 | Someone else changed this record since it was read | |
 | <a id="rate_limited"></a>`RATE_LIMITED` | 429 | Too many requests; see `Retry-After` | |
+| <a id="internal_error"></a>`INTERNAL_ERROR` | 500 | Unexpected server error; quote the `requestId` when reporting it | |
 | <a id="slot_taken"></a>`SLOT_TAKEN` | 409 | Another active booking overlaps; `waitlistable` says if the caller can wait for it | BR-6 |
 | <a id="not_aligned"></a>`NOT_ALIGNED` | 422 | Start or end not on a 30-minute boundary | BR-1 |
 | <a id="booking_too_short"></a>`BOOKING_TOO_SHORT` | 422 | Shorter than 30 minutes | BR-2 |

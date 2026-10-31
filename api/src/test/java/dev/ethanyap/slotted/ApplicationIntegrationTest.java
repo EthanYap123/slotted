@@ -6,17 +6,12 @@ import java.time.Clock;
 import java.time.ZoneOffset;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 /** Starts the whole application against Postgres. Skipped on machines without Docker; CI has it. */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@Import(TestcontainersConfiguration.class)
-@Testcontainers(disabledWithoutDocker = true)
+@IntegrationTest
 class ApplicationIntegrationTest {
 
   @Autowired TestRestTemplate http;
