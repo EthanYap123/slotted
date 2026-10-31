@@ -7,6 +7,7 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Added
 
 - Accounts and sign-in (#35): register, sign in, refresh and sign out, `GET /me`. BCrypt passwords of 10-128 characters checked against 9,000 common passwords; 15-minute HS256 access tokens; refresh tokens stored as SHA-256 hashes, rotated on every use, with reuse revoking the whole session. Sign-in errors never reveal whether an email exists.
+- Admin user management (#36): search users by email or name and filter by role, change roles, disable and re-enable accounts, lift suspensions. Role and status changes end the user's sessions; admin endpoints re-check the database so a demoted admin's unexpired token stops working. Admins cannot remove their own access. The first admin is created from `ADMIN_EMAIL`/`ADMIN_PASSWORD` on startup.
 - Every API error is an RFC 9457 problem with a stable `code` and the request's `X-Request-Id`; CORS allows only configured web origins.
 - `api/`: Spring Boot 3.5 (Java 21) skeleton with Maven wrapper, Flyway baseline migration, Actuator health probes, stateless security baseline and a Testcontainers Postgres 17 integration test.
 - ADR-0005: Spring Boot 3.5 and Maven.
