@@ -19,8 +19,16 @@ import org.testcontainers.junit.jupiter.Testcontainers;
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = {
       "slotted.auth.jwt-secret=integration-test-signing-key-not-a-real-secret",
-      "slotted.cors.allowed-origins=http://localhost:5173"
+      "slotted.cors.allowed-origins=http://localhost:5173",
+      "slotted.bootstrap-admin.email=" + IntegrationTest.ADMIN_EMAIL,
+      "slotted.bootstrap-admin.password=" + IntegrationTest.ADMIN_PASSWORD
     })
 @Import(TestcontainersConfiguration.class)
 @Testcontainers(disabledWithoutDocker = true)
-public @interface IntegrationTest {}
+public @interface IntegrationTest {
+
+  /** The admin created on startup in every integration test run. */
+  String ADMIN_EMAIL = "first.admin@example.com";
+
+  String ADMIN_PASSWORD = "integration test admin password";
+}

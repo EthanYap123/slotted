@@ -53,6 +53,10 @@ public class User {
     return new User(email, passwordHash, fullName, Role.STUDENT);
   }
 
+  public static User admin(String email, String passwordHash, String fullName) {
+    return new User(email, passwordHash, fullName, Role.ADMIN);
+  }
+
   /** Emails are compared case-insensitively by storing them trimmed and lower-cased. */
   public static String normalizeEmail(String email) {
     return email.strip().toLowerCase(Locale.ROOT);
@@ -60,6 +64,19 @@ public class User {
 
   public boolean isActive() {
     return status == UserStatus.ACTIVE;
+  }
+
+  public void changeRole(Role role) {
+    this.role = role;
+  }
+
+  public void changeStatus(UserStatus status) {
+    this.status = status;
+  }
+
+  /** Earlier no-shows stop counting toward a suspension (PRD BR-18). */
+  public void liftSuspension(Instant now) {
+    this.suspensionClearedAt = now;
   }
 
   public UUID getId() {

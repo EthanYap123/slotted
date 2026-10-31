@@ -20,7 +20,11 @@ import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 
 /** HS256 access tokens signed and checked with one shared secret (ADR-0002). */
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties({AuthProperties.class, CorsProperties.class})
+@EnableConfigurationProperties({
+  AuthProperties.class,
+  CorsProperties.class,
+  BootstrapAdminProperties.class
+})
 public class JwtConfig {
 
   /** Allowed difference between server clocks when checking expiry. */
