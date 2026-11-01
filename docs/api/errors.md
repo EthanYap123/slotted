@@ -11,6 +11,7 @@ Every error is an RFC 9457 problem (`application/problem+json`) with a stable `c
 | <a id="forbidden"></a>`FORBIDDEN` | 403 | Wrong role, or outside the manager's facilities | |
 | <a id="not_found"></a>`NOT_FOUND` | 404 | Does not exist or not visible to the caller | |
 | <a id="email_taken"></a>`EMAIL_TAKEN` | 409 | An account with this email exists | ST-1 |
+| <a id="name_taken"></a>`NAME_TAKEN` | 409 | A facility, or a room in the same facility, already has this name (ignoring case) | MG-1, AD-2 |
 | <a id="weak_password"></a>`WEAK_PASSWORD` | 400 | Password too short or too common | ST-1 |
 | <a id="version_conflict"></a>`VERSION_CONFLICT` | 412 | Someone else changed this record since it was read | |
 | <a id="rate_limited"></a>`RATE_LIMITED` | 429 | Too many requests; see `Retry-After` | |

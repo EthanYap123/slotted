@@ -1059,7 +1059,7 @@ components:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
     Conflict:
-      description: Conflicts with existing data, for example `SLOT_TAKEN`, `EMAIL_TAKEN`, `ALREADY_WAITING`
+      description: Conflicts with existing data, for example `SLOT_TAKEN`, `EMAIL_TAKEN`, `NAME_TAKEN`, `ALREADY_WAITING`
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
@@ -1133,6 +1133,7 @@ components:
         - FORBIDDEN
         - NOT_FOUND
         - EMAIL_TAKEN
+        - NAME_TAKEN
         - WEAK_PASSWORD
         - VERSION_CONFLICT
         - RATE_LIMITED
@@ -1282,10 +1283,11 @@ components:
     FacilityPatch:
       type: object
       minProperties: 1
+      description: Omitted fields stay as they are. An empty string clears `description` or `location`.
       properties:
         name: { type: string, minLength: 1, maxLength: 100 }
-        description: { type: [string, 'null'], maxLength: 1000 }
-        location: { type: [string, 'null'], maxLength: 200 }
+        description: { type: string, maxLength: 1000 }
+        location: { type: string, maxLength: 200 }
     OpeningHours:
       type: object
       required: [dayOfWeek, opensAt, closesAt]

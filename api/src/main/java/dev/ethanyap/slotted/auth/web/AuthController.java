@@ -2,6 +2,7 @@ package dev.ethanyap.slotted.auth.web;
 
 import dev.ethanyap.slotted.auth.application.AuthService;
 import dev.ethanyap.slotted.common.ApiTime;
+import dev.ethanyap.slotted.user.application.ManagedFacilities;
 import dev.ethanyap.slotted.user.web.CurrentUserResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
@@ -9,6 +10,8 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -22,32 +25,38 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
   private final AuthService auth;
+  private final ManagedFacilities managedFacilities;
 
-  public AuthController(AuthService auth) {
+  public AuthController(AuthService auth, ManagedFacilities managedFacilities) {
     this.auth = auth;
+    this.managedFacilities = managedFacilities;
   }
 
   @PostMapping("/register")
   @ResponseStatus(HttpStatus.CREATED)
   public AuthResponse register(@Valid @RequestBody RegisterRequest request) {
-    return AuthResponse.from(
-        auth.register(request.email(), request.password(), request.fullName()));
+    return respond(auth.register(request.email(), request.password(), request.fullName()));
   }
 
   @PostMapping("/login")
   public AuthResponse login(@Valid @RequestBody LoginRequest request) {
-    return AuthResponse.from(auth.login(request.email(), request.password()));
+    return respond(auth.login(request.email(), request.password()));
   }
 
   @PostMapping("/refresh")
   public AuthResponse refresh(@Valid @RequestBody RefreshRequest request) {
-    return AuthResponse.from(auth.refresh(request.refreshToken()));
+    return respond(auth.refresh(request.refreshToken()));
   }
 
   @PostMapping("/logout")
   @ResponseStatus(HttpStatus.NO_CONTENT)
   public void logout(@Valid @RequestBody RefreshRequest request) {
     auth.logout(request.refreshToken());
+  }
+
+  private AuthResponse respond(AuthService.SignedIn signedIn) {
+    var managed = managedFacilities.facilityIdsManagedBy(signedIn.user().getId());
+    return AuthResponse.from(signedIn, managed);
   }
 
   /** Body of {@code POST /auth/register}. Password strength is checked by the password policy. */
@@ -81,12 +90,12 @@ public class AuthController {
       String refreshToken,
       CurrentUserResponse user) {
 
-    static AuthResponse from(AuthService.SignedIn signedIn) {
+    static AuthResponse from(AuthService.SignedIn signedIn, List<UUID> managedFacilityIds) {
       return new AuthResponse(
           signedIn.accessToken().value(),
           ApiTime.toApi(signedIn.accessToken().expiresAt()),
           signedIn.refreshToken(),
-          CurrentUserResponse.from(signedIn.user()));
+          CurrentUserResponse.from(signedIn.user(), managedFacilityIds));
     }
   }
 }

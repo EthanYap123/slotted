@@ -3,6 +3,7 @@ package dev.ethanyap.slotted.user.web;
 import dev.ethanyap.slotted.common.ApiException;
 import dev.ethanyap.slotted.common.ErrorCode;
 import dev.ethanyap.slotted.common.Principals;
+import dev.ethanyap.slotted.user.application.ManagedFacilities;
 import dev.ethanyap.slotted.user.infrastructure.UserRepository;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -14,9 +15,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class MeController {
 
   private final UserRepository users;
+  private final ManagedFacilities managedFacilities;
 
-  public MeController(UserRepository users) {
+  public MeController(UserRepository users, ManagedFacilities managedFacilities) {
     this.users = users;
+    this.managedFacilities = managedFacilities;
   }
 
   @GetMapping("/api/v1/me")
@@ -24,7 +27,7 @@ public class MeController {
   public CurrentUserResponse me(@AuthenticationPrincipal Jwt jwt) {
     return users
         .findById(Principals.userId(jwt))
-        .map(CurrentUserResponse::from)
+        .map(u -> CurrentUserResponse.from(u, managedFacilities.facilityIdsManagedBy(u.getId())))
         .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHENTICATED));
   }
 }

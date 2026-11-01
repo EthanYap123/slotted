@@ -26,6 +26,11 @@ spring:
       hibernate:
         jdbc:
           time_zone: UTC
+        # Hand java.time values to the Postgres driver as they are. Without this, Hibernate converts
+        # wall-clock values such as opening times (LocalTime) through the JVM's default zone and
+        # stores them shifted (ADR-0003).
+        type:
+          java_time_use_direct_jdbc: true
   flyway:
     locations: classpath:db/migration
 
