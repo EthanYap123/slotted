@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.ErrorResponse;
@@ -49,6 +50,16 @@ public class ProblemDetailsHandler {
     return Problems.of(
         ErrorCode.VALIDATION_FAILED,
         "The request is malformed or has invalid values.",
+        request.getRequestURI());
+  }
+
+  /** Two edits of the same record raced; the second lost (optimistic locking). */
+  @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+  ProblemDetail handleConcurrentEdit(
+      ObjectOptimisticLockingFailureException e, HttpServletRequest request) {
+    return Problems.of(
+        ErrorCode.VERSION_CONFLICT,
+        "This was changed by someone else at the same time. Reload and try again.",
         request.getRequestURI());
   }
 
