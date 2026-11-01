@@ -18,12 +18,14 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 /** PRD AD-2 and MG-2: facilities, managers and opening hours, with role and facility scope. */
 @IntegrationTest
 class FacilitiesIntegrationTest {
 
   @Autowired TestRestTemplate http;
+  @Autowired JdbcTemplate jdbc;
   Api api;
   String adminToken;
 
@@ -169,6 +171,13 @@ class FacilitiesIntegrationTest {
         .containsExactly("MONDAY", "TUESDAY", "SATURDAY");
     assertThat(saved.get(1).path("opensAt").asText()).isEqualTo("08:30");
     assertThat(saved.get(1).path("closesAt").asText()).isEqualTo("21:30");
+    // Stored as wall-clock times, whatever the JVM's zone (CI runs in America/New_York).
+    var stored =
+        jdbc.queryForMap(
+            "SELECT opens_at::text AS opens, closes_at::text AS closes FROM opening_hours"
+                + " WHERE facility_id = ?::uuid AND day_of_week = 2",
+            facilityId);
+    assertThat(stored).containsEntry("opens", "08:30:00").containsEntry("closes", "21:30:00");
   }
 
   @Test
