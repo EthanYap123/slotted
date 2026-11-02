@@ -145,38 +145,36 @@ sequenceDiagram
     par Alice's request
         Alice->>API: POST /bookings {room 3, 14:00-15:00}
         API->>DB: BEGIN
-        API->>DB: SELECT ... FROM app_user WHERE id = Alice FOR UPDATE
-        API->>DB: settle overdue no-shows in room 3
-        API->>API: check rules (hours, window, quotas): pass
-        API->>DB: INSERT booking (room 3, [14:00, 15:00), CONFIRMED)
-        DB-->>API: inserted (index entry held until commit)
+        API->>DB: lock Alice's app_user row (FOR UPDATE)
+        API->>DB: lock room 3 (FOR NO KEY UPDATE)
     and Bob's request
         Bob->>API: POST /bookings {room 3, 14:00-15:00}
         API->>DB: BEGIN
-        API->>DB: SELECT ... FROM app_user WHERE id = Bob FOR UPDATE
-        API->>DB: settle overdue no-shows in room 3
-        API->>API: check rules: pass (Alice's row is not committed, so it is not visible)
-        API->>DB: INSERT booking (room 3, [14:00, 15:00), CONFIRMED)
-        Note over DB: Overlaps Alice's uncommitted row<br/>on booking_no_overlap, so Bob's INSERT waits
+        API->>DB: lock Bob's app_user row (FOR UPDATE)
+        API->>DB: lock room 3
+        Note over DB: Alice holds room 3, so Bob waits here
     end
 
-    API->>DB: Alice: INSERT audit_log, INSERT email_outbox
-    API->>DB: Alice: COMMIT
-    DB-->>API: Bob: ERROR 23P01 exclusion_violation
-    API->>DB: Bob: ROLLBACK
+    API->>DB: Alice: settle overdue no-shows in room 3
+    API->>API: Alice: check rules (hours, window, quotas): pass
+    API->>DB: Alice: any active booking overlapping 14:00-15:00? none
+    API->>DB: Alice: INSERT booking (room 3, [14:00, 15:00), CONFIRMED)
+    API->>DB: Alice: COMMIT (room lock released)
     API-->>Alice: 201 Created (CONFIRMED)
-    API-->>Bob: 409 SLOT_TAKEN, waitlistable: true
-    API->>API: after commit: send Alice's confirmation email
-    Bob->>API: POST /waitlist {room 3, 14:00-15:00} (optional)
+
+    API->>DB: Bob: (gets the room lock) settle, check rules: pass
+    API->>DB: Bob: any active booking overlapping 14:00-15:00? Alice's
+    API->>DB: Bob: ROLLBACK
+    API-->>Bob: 409 SLOT_TAKEN
 ```
 
 Points to notice:
 
-- Both requests pass the application's rule checks; only the database sees both rows and can decide. This is why the check is a constraint and not application code ([ADR-0001](adr/0001-double-booking-prevention.md)).
-- Bob waits only for Alice's short transaction, then fails fast. No retry loop is needed.
-- If Alice's transaction had rolled back (for example, a quota failure after the insert), Bob's insert would have succeeded instead. Exactly one booking exists either way.
-- The per-student `FOR UPDATE` lock does not make Alice and Bob wait for each other; it only stops one student's two tabs from beating the quota.
-- Phase 2 proves this with an integration test: many threads book the same slot against a real Postgres (Testcontainers); exactly one gets `201`, the rest get `409`, and the table holds one active row.
+- **The exclusion constraint is the guarantee** ([ADR-0001](adr/0001-double-booking-prevention.md)). Whatever writes a booking (this API, a later feature, a script), Postgres refuses an overlapping active row with `23P01`, which the API turns into `409 SLOT_TAKEN`.
+- **The room lock keeps the normal path orderly** ([ADR-0006](adr/0006-lock-the-room-while-booking.md)). Without it, simultaneous inserts into one room can wait on each other's uncommitted rows until Postgres aborts some of them as deadlocks (`40P01`). The concurrency test for issue #39 found this; with the lock, requests for one room take turns and the loser gets a clean `409`.
+- **Locks are always taken in the same order** (the booker, then the room), so booking transactions never wait on each other in a cycle. Bookings in different rooms do not wait at all.
+- **The per-student lock** stops one student's two tabs from beating the quota together; it never makes two different students wait for each other.
+- `ConcurrentBookingIntegrationTest` proves this against a real Postgres (Testcontainers): 16 students racing for one slot always produce exactly one booking, partly overlapping races never leave overlapping rows, one student's 5 parallel requests never exceed the 3-booking quota, and raw SQL that tries to double book is refused by the constraint.
 
 ## 5. Booking lifecycle
 
@@ -284,7 +282,7 @@ flowchart LR
 | Validation | Bean Validation on DTOs for shape; domain rule classes for business rules, each with its own error code ([errors.md](api/errors.md)) |
 | Errors | One `@RestControllerAdvice` producing RFC 9457 problem details with `code` and `requestId` |
 | Time | `timestamptz` and `Instant` everywhere, rules in Asia/Singapore via injected `Clock` ([ADR-0003](adr/0003-timezone-handling.md)) |
-| Concurrency | Exclusion constraint for rooms, per-student row lock for quotas, optimistic `version` for admin edits |
+| Concurrency | Exclusion constraint for rooms (the guarantee), room and per-student row locks taken in a fixed order (ADR-0006), optimistic `version` for edits |
 | Audit | Written by services in the same transaction as the change |
 | Email | Transactional outbox, dispatched after commit and retried by the sweep |
 | Logging | JSON logs with `requestId`, user ID and route; no personal data beyond IDs |

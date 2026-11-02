@@ -82,8 +82,12 @@ class ConcurrentBookingIntegrationTest {
                     s -> () -> book(s.token(), tomorrow, "14:00", "15:00"))
                 .toList());
 
-    assertThat(responses).filteredOn(r -> r.getStatusCode().value() == 201).hasSize(1);
     assertThat(responses)
+        .as(summary(responses))
+        .filteredOn(r -> r.getStatusCode().value() == 201)
+        .hasSize(1);
+    assertThat(responses)
+        .as(summary(responses))
         .filteredOn(r -> r.getStatusCode().value() == 409)
         .hasSize(RACERS - 1)
         .allSatisfy(r -> assertThat(r.getBody().path("code").asText()).isEqualTo("SLOT_TAKEN"));
@@ -199,6 +203,14 @@ class ConcurrentBookingIntegrationTest {
         Map.of(
             "roomId", roomId, "startAt", sgt(date, start), "endAt", sgt(date, end), "attendees", 1),
         token);
+  }
+
+  /** Status and error code of every response, for failure messages. */
+  private static String summary(List<ResponseEntity<JsonNode>> responses) {
+    return responses.stream()
+        .map(r -> r.getStatusCode().value() + " " + r.getBody().path("code").asText())
+        .toList()
+        .toString();
   }
 
   private int activeBookingsInRoom() {
