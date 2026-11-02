@@ -4,12 +4,15 @@ import dev.ethanyap.slotted.common.ApiException;
 import dev.ethanyap.slotted.common.ErrorCode;
 import dev.ethanyap.slotted.common.PageResponse;
 import dev.ethanyap.slotted.common.Principals;
+import dev.ethanyap.slotted.user.application.Suspensions;
 import dev.ethanyap.slotted.user.application.UserAdminService;
 import dev.ethanyap.slotted.user.domain.Role;
+import dev.ethanyap.slotted.user.domain.User;
 import dev.ethanyap.slotted.user.domain.UserStatus;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -31,9 +34,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminUserController {
 
   private final UserAdminService admin;
+  private final Suspensions suspensions;
 
-  public AdminUserController(UserAdminService admin) {
+  public AdminUserController(UserAdminService admin, Suspensions suspensions) {
     this.admin = admin;
+    this.suspensions = suspensions;
   }
 
   @GetMapping
@@ -44,8 +49,9 @@ public class AdminUserController {
       @RequestParam(defaultValue = "0") @Min(0) int page,
       @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
     var pageable = PageRequest.of(page, size, Sort.by("email"));
-    return PageResponse.of(
-        admin.search(Principals.userId(jwt), q, role, pageable), UserResponse::from);
+    var users = admin.search(Principals.userId(jwt), q, role, pageable);
+    var suspended = suspensions.suspendedUntil(users.map(User::getId).toList());
+    return PageResponse.of(users, u -> UserResponse.from(u, suspended.get(u.getId())));
   }
 
   @PatchMapping("/{userId}")
@@ -58,7 +64,8 @@ public class AdminUserController {
     var changes =
         new UserAdminService.UserChanges(
             patch.role(), patch.status(), Boolean.TRUE.equals(patch.liftSuspension()));
-    return UserResponse.from(admin.update(Principals.userId(jwt), userId, changes));
+    var user = admin.update(Principals.userId(jwt), userId, changes);
+    return UserResponse.from(user, suspensions.suspendedUntil(List.of(userId)).get(userId));
   }
 
   /** Body of {@code PATCH /admin/users/{userId}} (schema {@code UserPatch}). */

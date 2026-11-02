@@ -36,7 +36,15 @@ public class FacilityAccess {
   /** Active admins, and active managers assigned to this facility. */
   @Transactional(readOnly = true)
   public boolean canManage(UUID facilityId, Authentication authentication) {
-    return activeUser(authentication)
+    return userId(authentication).map(id -> canManage(facilityId, id)).orElse(false);
+  }
+
+  /** The same check for a known user ID, for use inside services. */
+  @Transactional(readOnly = true)
+  public boolean canManage(UUID facilityId, UUID userId) {
+    return users
+        .findById(userId)
+        .filter(User::isActive)
         .filter(
             u ->
                 u.getRole() == Role.ADMIN
@@ -46,11 +54,15 @@ public class FacilityAccess {
   }
 
   private Optional<User> activeUser(Authentication authentication) {
+    return userId(authentication).flatMap(users::findById).filter(User::isActive);
+  }
+
+  private static Optional<UUID> userId(Authentication authentication) {
     if (authentication == null || !authentication.isAuthenticated()) {
       return Optional.empty();
     }
     try {
-      return users.findById(UUID.fromString(authentication.getName())).filter(User::isActive);
+      return Optional.of(UUID.fromString(authentication.getName()));
     } catch (IllegalArgumentException notAUserId) {
       return Optional.empty();
     }

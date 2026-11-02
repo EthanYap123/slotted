@@ -62,6 +62,17 @@ slotted:
     email: ${ADMIN_EMAIL:}
     password: ${ADMIN_PASSWORD:}
     full-name: ${ADMIN_NAME:Administrator}
+  booking:
+    # Booking rules marked "config" in docs/PRD.md section 5.
+    window: 14d
+    max-upcoming: 3
+    max-daily-minutes: 240
+    late-cancellation: 2h
+    check-in-opens-before: 10m
+    no-show-grace: 15m
+    no-show-limit: 3
+    no-show-period: 30d
+    suspension: 7d
   cors:
     # Comma-separated web origins allowed to call the API.
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}

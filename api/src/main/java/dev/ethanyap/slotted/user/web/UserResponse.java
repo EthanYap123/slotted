@@ -4,6 +4,7 @@ import dev.ethanyap.slotted.common.ApiTime;
 import dev.ethanyap.slotted.user.domain.Role;
 import dev.ethanyap.slotted.user.domain.User;
 import dev.ethanyap.slotted.user.domain.UserStatus;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -17,15 +18,17 @@ public record UserResponse(
     OffsetDateTime suspendedUntil,
     OffsetDateTime createdAt) {
 
-  public static UserResponse from(User user) {
-    // Suspensions come from no-shows (BR-18), which arrive with bookings.
+  /**
+   * @param suspendedUntil end of a no-show suspension in force, or null (BR-18)
+   */
+  public static UserResponse from(User user, Instant suspendedUntil) {
     return new UserResponse(
         user.getId(),
         user.getEmail(),
         user.getFullName(),
         user.getRole(),
         user.getStatus(),
-        null,
+        ApiTime.toApi(suspendedUntil),
         ApiTime.toApi(user.getCreatedAt()));
   }
 }

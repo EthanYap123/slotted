@@ -3,12 +3,14 @@ package dev.ethanyap.slotted.auth.web;
 import dev.ethanyap.slotted.auth.application.AuthService;
 import dev.ethanyap.slotted.common.ApiTime;
 import dev.ethanyap.slotted.user.application.ManagedFacilities;
+import dev.ethanyap.slotted.user.application.Suspensions;
 import dev.ethanyap.slotted.user.web.CurrentUserResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -26,10 +28,13 @@ public class AuthController {
 
   private final AuthService auth;
   private final ManagedFacilities managedFacilities;
+  private final Suspensions suspensions;
 
-  public AuthController(AuthService auth, ManagedFacilities managedFacilities) {
+  public AuthController(
+      AuthService auth, ManagedFacilities managedFacilities, Suspensions suspensions) {
     this.auth = auth;
     this.managedFacilities = managedFacilities;
+    this.suspensions = suspensions;
   }
 
   @PostMapping("/register")
@@ -55,8 +60,10 @@ public class AuthController {
   }
 
   private AuthResponse respond(AuthService.SignedIn signedIn) {
-    var managed = managedFacilities.facilityIdsManagedBy(signedIn.user().getId());
-    return AuthResponse.from(signedIn, managed);
+    var userId = signedIn.user().getId();
+    var managed = managedFacilities.facilityIdsManagedBy(userId);
+    var suspendedUntil = suspensions.suspendedUntil(List.of(userId)).get(userId);
+    return AuthResponse.from(signedIn, managed, suspendedUntil);
   }
 
   /** Body of {@code POST /auth/register}. Password strength is checked by the password policy. */
@@ -90,12 +97,13 @@ public class AuthController {
       String refreshToken,
       CurrentUserResponse user) {
 
-    static AuthResponse from(AuthService.SignedIn signedIn, List<UUID> managedFacilityIds) {
+    static AuthResponse from(
+        AuthService.SignedIn signedIn, List<UUID> managedFacilityIds, Instant suspendedUntil) {
       return new AuthResponse(
           signedIn.accessToken().value(),
           ApiTime.toApi(signedIn.accessToken().expiresAt()),
           signedIn.refreshToken(),
-          CurrentUserResponse.from(signedIn.user(), managedFacilityIds));
+          CurrentUserResponse.from(signedIn.user(), managedFacilityIds, suspendedUntil));
     }
   }
 }

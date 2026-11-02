@@ -178,7 +178,7 @@ erDiagram
 | `opening_hours` | One open period per weekday. No row for a day means closed. `closes_at > opens_at`, so a facility cannot be open past midnight (BR-4). |
 | `room` | Bookable space. `checkin_token` is the secret in the room's QR code. It is a low-value secret (it only proves presence at a room), so it is stored as is in order to reprint the QR code. |
 | `blackout` | Unbookable period for a room or a whole facility. |
-| `booking_series` | Groups the occurrences of a recurring booking. Each occurrence is a normal `booking` row, so every booking rule and the exclusion constraint apply to occurrences too. |
+| `booking_series` | (Phase 3; `booking.series_id` is added with it.) Groups the occurrences of a recurring booking. Each occurrence is a normal `booking` row, so every booking rule and the exclusion constraint apply to occurrences too. |
 | `booking` | One booking. Stored `status` is what was last written; effective status (no-show, finished) is derived at read time ([ADR-0004](adr/0004-lazy-evaluation-of-time-based-rules.md)). Ending a checked-in booking early (BR-15) moves `end_at` to the next 30-minute boundary and sets `released_at`, so the freed time stops being covered by the exclusion constraint; the original end time stays in the audit log. |
 | `waitlist_entry` | A student waiting for an exact slot. Queue order is `created_at`, then `id`. |
 | `audit_log` | Append-only history of every change (BR-32). |
