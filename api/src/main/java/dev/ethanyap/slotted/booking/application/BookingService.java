@@ -69,10 +69,11 @@ public class BookingService {
   }
 
   /**
-   * Books a slot. In one transaction: lock the booker's row (quotas), settle overdue no-shows in
-   * the room (ADR-0004), check every rule, then insert. If another request took the slot meanwhile,
-   * the database's exclusion constraint rejects the insert and the caller gets {@code SLOT_TAKEN}
-   * (ADR-0001).
+   * Books a slot. In one transaction: lock the booker's row (quotas), then the room (bookings for
+   * one room take turns, ADR-0006), settle overdue no-shows in the room (ADR-0004), check every
+   * rule, then insert. The exclusion constraint still guarantees no overlap whatever writes the row
+   * (ADR-0001); a violation becomes {@code SLOT_TAKEN}. Locks are always taken in this order, so
+   * booking transactions cannot deadlock on each other.
    */
   @Transactional
   public BookingView create(UUID userId, NewBooking request) {
@@ -81,7 +82,7 @@ public class BookingService {
             .lockById(userId)
             .filter(User::isActive)
             .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHENTICATED));
-    var room = lookup.room(request.roomId());
+    var room = lookup.lockRoom(request.roomId());
     var facility = lookup.facilityOf(room);
     var now = clock.instant();
     var cutoff = noShowCutoff(now);

@@ -1,6 +1,6 @@
 # ADR-0001: Prevent double bookings with a Postgres exclusion constraint
 
-- **Status:** Accepted
+- **Status:** Accepted; concurrency behaviour refined by [ADR-0006](0006-lock-the-room-while-booking.md)
 - **Date:** 29 October 2026
 - **Related:** [PRD BR-6, BR-8, BR-9](../PRD.md#5-business-rules), [ERD](../ERD.md), [Architecture: concurrent booking](../ARCHITECTURE.md#4-two-users-book-the-same-slot-at-the-same-time)
 

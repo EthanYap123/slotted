@@ -1,5 +1,6 @@
 package dev.ethanyap.slotted.booking.web;
 
+import dev.ethanyap.slotted.booking.application.BookingAttempts;
 import dev.ethanyap.slotted.booking.application.BookingService;
 import dev.ethanyap.slotted.booking.application.BookingService.BookingQuery;
 import dev.ethanyap.slotted.booking.application.BookingService.NewBooking;
@@ -36,10 +37,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class BookingController {
 
   private final BookingService bookings;
+  private final BookingAttempts attempts;
   private final BookingPolicy policy;
 
-  public BookingController(BookingService bookings, BookingPolicy policy) {
+  public BookingController(
+      BookingService bookings, BookingAttempts attempts, BookingPolicy policy) {
     this.bookings = bookings;
+    this.attempts = attempts;
     this.policy = policy;
   }
 
@@ -47,7 +51,7 @@ public class BookingController {
   public ResponseEntity<BookingResponse> create(
       @AuthenticationPrincipal Jwt jwt, @Valid @RequestBody BookingRequest request) {
     var view =
-        bookings.create(
+        attempts.create(
             Principals.userId(jwt),
             new NewBooking(
                 request.roomId(),

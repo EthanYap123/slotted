@@ -49,6 +49,13 @@ class BookingLookup {
         .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "No room with this ID."));
   }
 
+  /** The room, locked until the transaction ends (ADR-0006). */
+  Room lockRoom(UUID roomId) {
+    return rooms
+        .lockById(roomId)
+        .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "No room with this ID."));
+  }
+
   Facility facilityOf(Room room) {
     return facilities.findById(room.getFacilityId()).orElseThrow();
   }
