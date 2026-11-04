@@ -13,7 +13,8 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "coverage": "vitest run --coverage"
+    "coverage": "vitest run --coverage",
+    "api:types": "npx --yes openapi-typescript@7.13.0 ../docs/api/openapi.yaml -o src/api/schema.d.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.105.0",
