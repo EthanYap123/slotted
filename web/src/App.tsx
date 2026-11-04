@@ -1,19 +1,10 @@
 import { Link, Route, Routes } from 'react-router'
-import { useSession } from './api/session'
 import { AppShell } from './components/AppShell'
 import { LoginPage } from './features/auth/LoginPage'
 import { RegisterPage } from './features/auth/RegisterPage'
 import { RequireAuth } from './features/auth/RequireAuth'
-
-function HomePage() {
-  const current = useSession()
-  return (
-    <>
-      <h1>Welcome{current.user ? `, ${current.user.fullName}` : ''}</h1>
-      <p>Book study rooms, sports courts and meeting rooms without double bookings.</p>
-    </>
-  )
-}
+import { BookPage } from './features/booking/BookPage'
+import { MyBookingsPage } from './features/booking/MyBookingsPage'
 
 function NotFoundPage() {
   return (
@@ -33,7 +24,8 @@ export default function App() {
         <Route path="login" element={<LoginPage />} />
         <Route path="register" element={<RegisterPage />} />
         <Route element={<RequireAuth />}>
-          <Route index element={<HomePage />} />
+          <Route index element={<BookPage />} />
+          <Route path="bookings" element={<MyBookingsPage />} />
         </Route>
         <Route path="*" element={<NotFoundPage />} />
       </Route>

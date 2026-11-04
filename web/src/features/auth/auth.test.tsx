@@ -20,12 +20,15 @@ describe('signing in', () => {
   })
 
   it('signs in, stores only the refresh token and opens the app', async () => {
-    const api = fakeApi({ 'POST /auth/login': { body: authResponse() } })
+    const api = fakeApi({
+      'POST /auth/login': { body: authResponse() },
+      'GET /facilities': { body: [] },
+    })
     renderApp('/')
 
     await fillSignIn('ada@example.com', 'a good long password')
 
-    expect(await screen.findByRole('heading', { name: 'Welcome, Ada Tan' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Book a room' })).toBeInTheDocument()
     expect(api.calls[0]?.body).toEqual({
       email: 'ada@example.com',
       password: 'a good long password',
@@ -50,16 +53,18 @@ describe('signing in', () => {
 
   it('signs out on the server and on this device', async () => {
     session.signedIn(authResponse())
-    const api = fakeApi({ 'POST /auth/logout': { status: 204 } })
+    const api = fakeApi({
+      'POST /auth/logout': { status: 204 },
+      'GET /facilities': { body: [] },
+    })
     const user = userEvent.setup()
     renderApp('/')
 
     await user.click(screen.getByRole('button', { name: 'Sign out' }))
 
     expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument()
-    expect(api.calls[0]).toMatchObject({
-      path: '/auth/logout',
-      body: { refreshToken: 'refresh-1' },
+    expect(api.calls.find((call) => call.path === '/auth/logout')?.body).toEqual({
+      refreshToken: 'refresh-1',
     })
     expect(localStorage.getItem('slotted.refreshToken')).toBeNull()
   })
@@ -88,12 +93,15 @@ describe('registering', () => {
   }
 
   it('creates the account and signs in', async () => {
-    const api = fakeApi({ 'POST /auth/register': { status: 201, body: authResponse() } })
+    const api = fakeApi({
+      'POST /auth/register': { status: 201, body: authResponse() },
+      'GET /facilities': { body: [] },
+    })
     renderApp('/register')
 
     await fillRegister()
 
-    expect(await screen.findByRole('heading', { name: 'Welcome, Ada Tan' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Book a room' })).toBeInTheDocument()
     expect(api.calls[0]?.body).toEqual({
       fullName: 'Ada Tan',
       email: 'ada@example.com',
@@ -139,14 +147,17 @@ describe('route guard', () => {
   it('offers a retry when the server cannot be reached', async () => {
     localStorage.setItem('slotted.refreshToken', 'saved')
     session.offline()
-    const api = fakeApi({ 'POST /auth/refresh': { body: authResponse() } })
+    const api = fakeApi({
+      'POST /auth/refresh': { body: authResponse() },
+      'GET /facilities': { body: [] },
+    })
     const user = userEvent.setup()
     renderApp('/')
 
     await user.click(screen.getByRole('button', { name: 'Try again' }))
 
-    expect(await screen.findByRole('heading', { name: 'Welcome, Ada Tan' })).toBeInTheDocument()
-    expect(api.calls).toHaveLength(1)
+    expect(await screen.findByRole('heading', { name: 'Book a room' })).toBeInTheDocument()
+    expect(api.calls.filter((call) => call.path === '/auth/refresh')).toHaveLength(1)
   })
 
   it('shows a waiting message while the session is being restored', () => {
