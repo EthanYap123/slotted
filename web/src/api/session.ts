@@ -82,7 +82,6 @@ export const session = {
     accessToken = null
     setState(initialState())
   },
-
 }
 
 function subscribe(listener: () => void) {
