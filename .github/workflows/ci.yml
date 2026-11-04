@@ -33,6 +33,7 @@ jobs:
               - '.github/workflows/ci.yml'
             web:
               - 'web/**'
+              - 'docs/api/openapi.yaml'
               - '.github/workflows/ci.yml'
             compose:
               - 'docker-compose.yml'
@@ -101,6 +102,10 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
+      - name: Check API types match the contract
+        run: |
+          npm run api:types
+          git diff --exit-code src/api/schema.d.ts
       - name: Lint
         run: npm run lint
       - name: Check formatting
