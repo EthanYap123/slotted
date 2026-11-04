@@ -29,8 +29,9 @@ export function AppShell() {
           {current.status === 'signedIn' && (
             <nav aria-label="Main" className="nav">
               <NavLink to="/" end>
-                Home
+                Book a room
               </NavLink>
+              <NavLink to="/bookings">My bookings</NavLink>
             </nav>
           )}
           <div className="header-actions">

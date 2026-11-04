@@ -4,7 +4,7 @@ A booking system for shared spaces such as study rooms, sports courts and meetin
 
 Key features: conflict-free booking under concurrency, recurring bookings, a waitlist with auto-promotion, QR code check-in, auto-release of no-shows after 15 minutes, email confirmations and an audit log.
 
-**Status:** Phase 1, repository setup and CI. The API and web app are skeletons; features start in Phase 2.
+**Status:** Phase 2 complete. Accounts, roles, facilities, rooms and conflict-free booking work end to end. Recurring bookings, waitlists, check-in and email come in Phase 3. It is not deployed yet.
 
 ## Design documents
 
