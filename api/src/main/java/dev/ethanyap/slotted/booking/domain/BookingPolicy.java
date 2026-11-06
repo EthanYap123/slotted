@@ -15,6 +15,9 @@ import java.time.Duration;
  * @param noShowLimit this many no-shows within {@code noShowPeriod} suspends a student (BR-18)
  * @param noShowPeriod the period no-shows are counted over (BR-18)
  * @param suspension how long a suspension lasts (BR-18)
+ * @param maxSeriesOccurrences most dates in a recurring booking (BR-20)
+ * @param seriesHorizon how far ahead the last date of a series may start (BR-20)
+ * @param maxActiveSeries most series with upcoming dates a student may hold (BR-21)
  */
 public record BookingPolicy(
     Duration window,
@@ -25,7 +28,27 @@ public record BookingPolicy(
     Duration noShowGrace,
     int noShowLimit,
     Duration noShowPeriod,
-    Duration suspension) {
+    Duration suspension,
+    int maxSeriesOccurrences,
+    Duration seriesHorizon,
+    int maxActiveSeries) {
+
+  /** The same rules for one date of a series: the series limit replaces the booking window. */
+  public BookingPolicy forSeries() {
+    return new BookingPolicy(
+        seriesHorizon,
+        maxUpcoming,
+        maxDailyMinutes,
+        lateCancellation,
+        checkInOpensBefore,
+        noShowGrace,
+        noShowLimit,
+        noShowPeriod,
+        suspension,
+        maxSeriesOccurrences,
+        seriesHorizon,
+        maxActiveSeries);
+  }
 
   /** The values approved in the PRD, for tests. */
   public static BookingPolicy defaults() {
@@ -38,6 +61,9 @@ public record BookingPolicy(
         Duration.ofMinutes(15),
         3,
         Duration.ofDays(30),
-        Duration.ofDays(7));
+        Duration.ofDays(7),
+        8,
+        Duration.ofDays(56),
+        1);
   }
 }

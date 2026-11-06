@@ -1510,6 +1510,9 @@ components:
         reason:
           $ref: '#/components/schemas/ErrorCode'
           description: Why the occurrence cannot be booked
+        detail:
+          type: [string, 'null']
+          description: The same reason in plain language, to show to people
     SeriesPreview:
       type: object
       required: [occurrences, bookableCount]

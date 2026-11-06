@@ -307,6 +307,107 @@ describe('booking a slot', () => {
   })
 })
 
+describe('repeating a booking', () => {
+  const OCCURRENCES = [
+    {
+      startAt: `${TODAY}T10:30:00+08:00`,
+      endAt: `${TODAY}T11:30:00+08:00`,
+      bookable: true,
+    },
+    {
+      startAt: '2026-11-11T10:30:00+08:00',
+      endAt: '2026-11-11T11:30:00+08:00',
+      bookable: false,
+      reason: 'SLOT_TAKEN',
+      detail: 'Someone else has booked this room.',
+    },
+  ]
+  const SERIES = {
+    id: 's1',
+    roomId: 'r1',
+    frequency: 'WEEKLY',
+    occurrencesRequested: 2,
+    bookings: [booking()],
+    skipped: [OCCURRENCES[1]],
+  }
+
+  async function openPreview(routes: Parameters<typeof fakeApi>[0]) {
+    const api = fakeApi({
+      'GET /facilities': { body: FACILITIES },
+      [AVAILABILITY]: availability(),
+      ...routes,
+    })
+    const user = userEvent.setup()
+    renderApp('/')
+    await user.click(await screen.findByRole('button', { name: 'Room A, 10:30, free' }))
+    const dialog = screen.getByRole('dialog', { name: 'Book Room A' })
+    await user.selectOptions(within(dialog).getByLabelText('Repeat'), 'Every week')
+    await user.selectOptions(within(dialog).getByLabelText('Number of dates'), '2')
+    await user.click(within(dialog).getByRole('button', { name: 'Check dates' }))
+    return { api, user, dialog }
+  }
+
+  it('shows which dates can be booked, then books them and lists what was skipped', async () => {
+    const { api, user, dialog } = await openPreview({
+      'POST /booking-series/preview': { body: { occurrences: OCCURRENCES, bookableCount: 1 } },
+      'POST /booking-series': { status: 201, body: SERIES },
+    })
+
+    expect(await within(dialog).findByText('1 of 2 dates can be booked.')).toBeInTheDocument()
+    expect(
+      within(dialog).getByText('Cannot be booked: Someone else has booked this room.'),
+    ).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Book 1 date' }))
+
+    expect(await screen.findByText(/Booked 1 of 2 dates/)).toBeInTheDocument()
+    expect(screen.getByText(/^Skipped/)).toHaveTextContent('Someone else has booked this room.')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(api.calls.find((call) => call.path === '/booking-series')?.body).toMatchObject({
+      roomId: 'r1',
+      frequency: 'WEEKLY',
+      occurrences: 2,
+      firstStartAt: `${TODAY}T10:30:00+08:00`,
+    })
+  })
+
+  it('cannot book when no date is available, and can go back', async () => {
+    const { user, dialog } = await openPreview({
+      'POST /booking-series/preview': {
+        body: { occurrences: [OCCURRENCES[1]], bookableCount: 0 },
+      },
+    })
+
+    expect(await within(dialog).findByRole('button', { name: 'Book 0 dates' })).toBeDisabled()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Back' }))
+
+    expect(within(dialog).getByRole('button', { name: 'Check dates' })).toBeInTheDocument()
+  })
+
+  it('shows a rule that fails the whole series', async () => {
+    const { dialog } = await openPreview({
+      'POST /booking-series/preview': problem(422, 'SERIES_LIMIT', 'You already have one.'),
+    })
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('You already have one.')
+  })
+
+  it('offers daily repeats to staff only', async () => {
+    fakeApi({ 'GET /facilities': { body: FACILITIES }, [AVAILABILITY]: availability() })
+    const user = userEvent.setup()
+    const view = renderApp('/')
+    await user.click(await screen.findByRole('button', { name: 'Room A, 10:30, free' }))
+    expect(screen.queryByRole('option', { name: 'Every day' })).not.toBeInTheDocument()
+    view.unmount()
+
+    session.signedIn({ ...authResponse(), user: { ...student, role: 'MANAGER' } })
+    renderApp('/')
+    await user.click(await screen.findByRole('button', { name: 'Room A, 10:30, free' }))
+    expect(screen.getByRole('option', { name: 'Every day' })).toBeInTheDocument()
+  })
+})
+
 describe('my bookings', () => {
   const UPCOMING = 'GET /bookings/mine?scope=upcoming&page=0&size=10'
   const PAST = 'GET /bookings/mine?scope=past&page=0&size=10'
@@ -409,6 +510,31 @@ describe('my bookings', () => {
 
     await user.click(within(dialog).getByRole('button', { name: 'Keep booking' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('cancels a repeating booking from a date onwards', async () => {
+    const api = fakeApi({
+      [UPCOMING]: page([booking({ seriesId: 's1' })]),
+      'POST /booking-series/s1/cancel': { body: {} },
+    })
+    const user = userEvent.setup()
+    renderApp('/bookings')
+
+    expect(await screen.findByText('Repeating booking')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /and later dates$/ }))
+    const dialog = screen.getByRole('dialog', { name: 'Cancel this and later dates?' })
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel these dates' }))
+
+    expect(await screen.findByText(/and the later dates in this series/)).toBeInTheDocument()
+    expect(api.calls.find((call) => call.method === 'POST')?.body).toEqual({ fromDate: TODAY })
+  })
+
+  it('does not offer series cancelling for a single booking', async () => {
+    fakeApi({ [UPCOMING]: page([booking()]) })
+    renderApp('/bookings')
+
+    await screen.findByRole('heading', { name: 'Room A' })
+    expect(screen.queryByRole('button', { name: /and later dates$/ })).not.toBeInTheDocument()
   })
 
   it('pages through long lists', async () => {

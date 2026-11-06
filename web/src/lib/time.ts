@@ -29,6 +29,11 @@ export function todayInSingapore(): string {
   return dateKey.format(new Date())
 }
 
+/** The "YYYY-MM-DD" date of an instant in Singapore. */
+export function dateInSingapore(instant: string): string {
+  return dateKey.format(new Date(instant))
+}
+
 export function addDays(date: string, days: number): string {
   const utc = new Date(`${date}T00:00:00Z`)
   utc.setUTCDate(utc.getUTCDate() + days)

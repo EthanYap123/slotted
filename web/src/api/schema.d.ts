@@ -977,6 +977,8 @@ export interface components {
             bookable: boolean;
             /** @description Why the occurrence cannot be booked */
             reason?: components["schemas"]["ErrorCode"];
+            /** @description The same reason in plain language, to show to people */
+            detail?: string | null;
         };
         SeriesPreview: {
             occurrences: components["schemas"]["OccurrenceCheck"][];

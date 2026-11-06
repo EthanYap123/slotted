@@ -50,6 +50,21 @@ class BookingLookup {
     this.policy = policy;
   }
 
+  User activeUser(UUID userId) {
+    return users
+        .findById(userId)
+        .filter(User::isActive)
+        .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHENTICATED));
+  }
+
+  /** The booker, locked until the transaction ends so their quotas cannot be raced (ADR-0001). */
+  User lockActiveUser(UUID userId) {
+    return users
+        .lockById(userId)
+        .filter(User::isActive)
+        .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHENTICATED));
+  }
+
   Room room(UUID roomId) {
     return rooms
         .findById(roomId)
