@@ -282,7 +282,7 @@ flowchart LR
 | Validation | Bean Validation on DTOs for shape; domain rule classes for business rules, each with its own error code ([errors.md](api/errors.md)) |
 | Errors | One `@RestControllerAdvice` producing RFC 9457 problem details with `code` and `requestId` |
 | Time | `timestamptz` and `Instant` everywhere, rules in Asia/Singapore via injected `Clock` ([ADR-0003](adr/0003-timezone-handling.md)) |
-| Concurrency | Exclusion constraint for rooms (the guarantee), room and per-student row locks taken in a fixed order (ADR-0006), optimistic `version` for edits |
+| Concurrency | Exclusion constraint for rooms (the guarantee), room and per-student row locks taken in a fixed order (ADR-0006), also taken by blackouts and opening-hour changes so they cannot miss a booking in progress, optimistic `version` for edits |
 | Audit | Written by services in the same transaction as the change |
 | Email | Transactional outbox, dispatched after commit and retried by the sweep |
 | Logging | JSON logs with `requestId`, user ID and route; no personal data beyond IDs |

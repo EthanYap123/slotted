@@ -143,6 +143,34 @@ class ConcurrentBookingIntegrationTest {
                 assertThat(r.getBody().path("code").asText()).isEqualTo("QUOTA_UPCOMING_EXCEEDED"));
   }
 
+  /**
+   * A booking and a blackout race for the same time. Whichever gets the room lock first, no active
+   * booking may be left inside the blackout: it was either refused or cancelled by the blackout.
+   */
+  @RepeatedTest(5)
+  void aBookingRacingABlackoutIsNeverLeftInsideIt() throws Exception {
+    var facility =
+        api.get("/api/v1/rooms/" + roomId, adminToken).getBody().path("facilityId").asText();
+    var student = api.newStudent();
+    List<Callable<ResponseEntity<JsonNode>>> calls =
+        List.of(
+            () -> book(student.token(), tomorrow, "16:00", "17:00"),
+            () ->
+                api.post(
+                    "/api/v1/facilities/" + facility + "/blackouts",
+                    Map.of(
+                        "startAt", sgt(tomorrow, "16:00"),
+                        "endAt", sgt(tomorrow, "17:00"),
+                        "reason", "Race"),
+                    adminToken));
+
+    var responses = race(calls);
+
+    assertThat(responses.get(0).getStatusCode().value()).isIn(201, 422);
+    assertThat(responses.get(1).getStatusCode().value()).isEqualTo(201);
+    assertThat(activeBookingsInRoom()).isZero();
+  }
+
   /** The constraint on its own, without the application: SQL that tries to double book fails. */
   @Test
   void theDatabaseRefusesOverlappingActiveBookingsWhoeverWritesThem() {

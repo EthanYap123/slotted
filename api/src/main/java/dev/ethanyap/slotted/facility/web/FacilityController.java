@@ -27,11 +27,13 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-/** {@code /facilities} in docs/api/openapi.yaml. Anyone signed in can read; writes are scoped. */
+/**
+ * {@code /facilities} in docs/api/openapi.yaml. Anyone signed in can read; writes are scoped.
+ * Opening hours are changed through {@code ScheduleController}, because that can cancel bookings.
+ */
 @RestController
 @RequestMapping("/api/v1/facilities")
 public class FacilityController {
@@ -68,17 +70,6 @@ public class FacilityController {
       @Valid @RequestBody FacilityPatch patch) {
     var changes = new FacilityChanges(patch.name(), patch.description(), patch.location());
     return FacilityResponse.from(facilities.update(facilityId, IfMatch.parse(ifMatch), changes));
-  }
-
-  @PutMapping("/{facilityId}/opening-hours")
-  @PreAuthorize("@facilityAccess.canManage(#facilityId, authentication)")
-  public ImpactPreviewResponse replaceOpeningHours(
-      @PathVariable UUID facilityId,
-      @RequestParam(defaultValue = "false") boolean dryRun,
-      @RequestBody @Size(max = 7) List<@Valid @NotNull OpeningHoursDto> hours) {
-    var periods = hours.stream().map(OpeningHoursDto::toPeriod).toList();
-    var change = facilities.replaceOpeningHours(facilityId, periods, dryRun);
-    return new ImpactPreviewResponse(change.applied(), List.of(), 0);
   }
 
   @PutMapping("/{facilityId}/managers")
@@ -133,14 +124,10 @@ public class FacilityController {
       return new OpeningHoursDto(period.dayOfWeek(), period.opensAt(), period.closesAt());
     }
 
-    OpeningPeriod toPeriod() {
+    public OpeningPeriod toPeriod() {
       return new OpeningPeriod(dayOfWeek, opensAt, closesAt);
     }
   }
-
-  /** Schema {@code ImpactPreview}. */
-  public record ImpactPreviewResponse(
-      boolean applied, List<Object> affectedBookings, int affectedWaitlistEntries) {}
 
   /** Body of {@code PUT /facilities/{id}/managers}. */
   public record ManagersRequest(@NotNull @Size(max = 50) Set<@NotNull UUID> userIds) {}

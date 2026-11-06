@@ -30,6 +30,12 @@ export function TimelineLegend() {
         Yours
       </li>
       <li>
+        <span className="cell cell-blackout" aria-hidden="true">
+          ×
+        </span>{' '}
+        Closed
+      </li>
+      <li>
         <span className="cell cell-past" aria-hidden="true" /> Past
       </li>
     </ul>

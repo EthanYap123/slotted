@@ -2,6 +2,7 @@ package dev.ethanyap.slotted.booking.application;
 
 import dev.ethanyap.slotted.booking.domain.Booking;
 import dev.ethanyap.slotted.booking.domain.BookingPolicy;
+import dev.ethanyap.slotted.booking.infrastructure.BlackoutRepository;
 import dev.ethanyap.slotted.booking.infrastructure.BookingRepository;
 import dev.ethanyap.slotted.common.ApiException;
 import dev.ethanyap.slotted.common.ErrorCode;
@@ -33,6 +34,7 @@ public class AvailabilityService {
   private final FacilityRepository facilities;
   private final RoomRepository rooms;
   private final BookingRepository bookings;
+  private final BlackoutRepository blackouts;
   private final FacilityAccess access;
   private final BookingPolicy policy;
   private final Clock clock;
@@ -41,12 +43,14 @@ public class AvailabilityService {
       FacilityRepository facilities,
       RoomRepository rooms,
       BookingRepository bookings,
+      BlackoutRepository blackouts,
       FacilityAccess access,
       BookingPolicy policy,
       Clock clock) {
     this.facilities = facilities;
     this.rooms = rooms;
     this.bookings = bookings;
+    this.blackouts = blackouts;
     this.access = access;
     this.policy = policy;
     this.clock = clock;
@@ -86,13 +90,22 @@ public class AvailabilityService {
                 closesAt,
                 now.minus(policy.noShowGrace()));
 
+    var dayBlackouts = blackouts.findOverlapping(facilityId, opensAt, closesAt);
+
     var roomDays = new ArrayList<RoomDay>();
     for (var room : activeRooms) {
       var roomBookings =
           dayBookings.stream().filter(b -> b.getRoomId().equals(room.getId())).toList();
       var cells = new ArrayList<Cell>();
       for (var start = opensAt; start.isBefore(closesAt); start = start.plus(CELL)) {
-        cells.add(cell(start, roomBookings, viewerId, staff, now));
+        var cell = cell(start, roomBookings, viewerId, staff, now);
+        var from = start;
+        var blackedOut =
+            dayBlackouts.stream().anyMatch(b -> b.covers(room.getId(), from, from.plus(CELL)));
+        cells.add(
+            blackedOut && cell.state() != CellState.MINE && cell.state() != CellState.BOOKED
+                ? new Cell(start, CellState.BLACKOUT, null)
+                : cell);
       }
       roomDays.add(new RoomDay(room, cells));
     }
@@ -126,11 +139,12 @@ public class AvailabilityService {
    */
   public record Cell(Instant startAt, CellState state, UUID bookingId) {}
 
-  /** What a cell shows. Blackouts arrive in Phase 3. */
+  /** What a cell shows. */
   public enum CellState {
     FREE,
     BOOKED,
     MINE,
+    BLACKOUT,
     PAST
   }
 }

@@ -96,7 +96,8 @@ public class BookingService {
             room.getCapacity(),
             room.getMaxBookingMinutes(),
             zone,
-            openingHoursOn(facility, request.startAt(), zone)),
+            openingHoursOn(facility, request.startAt(), zone),
+            lookup.blackoutReason(room, request.startAt(), request.endAt())),
         bookerFacts(user, request, zone, now, cutoff),
         now,
         policy);

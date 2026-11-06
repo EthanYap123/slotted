@@ -28,6 +28,8 @@ public enum ErrorCode {
   QUOTA_DAILY_HOURS_EXCEEDED(422, "Too many hours booked that day"),
   STUDENT_OVERLAP(422, "You already have a booking at this time"),
   SUSPENDED(403, "Booking is suspended after repeated no-shows"),
+  BLACKOUT(422, "Closed at this time"),
+  BLACKOUT_ENDED(422, "This blackout has ended"),
   ALREADY_STARTED(422, "Booking has already started"),
   NOT_CANCELLABLE(422, "Booking cannot be cancelled"),
   REASON_REQUIRED(422, "A reason is required"),

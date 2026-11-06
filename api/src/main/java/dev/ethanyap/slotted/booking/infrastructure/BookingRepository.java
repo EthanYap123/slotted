@@ -67,6 +67,14 @@ public interface BookingRepository
           + " dev.ethanyap.slotted.booking.domain.BookingStatus.CHECKED_IN)")
   long countUpcoming(UUID userId, Instant now);
 
+  /** A user's active bookings that have not started, soonest first. */
+  @Query(
+      "select b from Booking b where b.userId = :userId and b.startAt > :now"
+          + " and b.status in (dev.ethanyap.slotted.booking.domain.BookingStatus.CONFIRMED,"
+          + " dev.ethanyap.slotted.booking.domain.BookingStatus.CHECKED_IN)"
+          + " order by b.startAt")
+  List<Booking> findUpcoming(UUID userId, Instant now);
+
   /** Bookings that count toward the daily limit, starting within one local day (BR-8). */
   @Query(
       "select b from Booking b where b.userId = :userId"

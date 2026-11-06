@@ -4,7 +4,6 @@ import dev.ethanyap.slotted.common.ApiException;
 import dev.ethanyap.slotted.common.ErrorCode;
 import dev.ethanyap.slotted.common.IfMatch;
 import dev.ethanyap.slotted.facility.domain.Facility;
-import dev.ethanyap.slotted.facility.domain.OpeningPeriod;
 import dev.ethanyap.slotted.facility.infrastructure.FacilityRepository;
 import dev.ethanyap.slotted.user.domain.Role;
 import dev.ethanyap.slotted.user.infrastructure.UserRepository;
@@ -69,21 +68,6 @@ public class FacilityService {
     return saveUniquely(facility);
   }
 
-  /**
-   * Replaces the weekly opening hours. Bookings that fall outside the new hours will be cancelled
-   * once bookings exist (BR-31); until then nothing is affected.
-   */
-  @Transactional
-  public OpeningHoursChange replaceOpeningHours(
-      UUID facilityId, Collection<OpeningPeriod> periods, boolean dryRun) {
-    var facility = get(facilityId);
-    Facility.checkOneEntryPerDay(periods);
-    if (!dryRun) {
-      facility.replaceOpeningHours(periods);
-    }
-    return new OpeningHoursChange(!dryRun, List.of());
-  }
-
   /** Sets who manages the facility. Every user must exist and have the Manager role. */
   @Transactional
   public void replaceManagers(UUID facilityId, Collection<UUID> userIds) {
@@ -118,9 +102,4 @@ public class FacilityService {
 
   /** Requested changes; null fields are left alone and blank text clears an optional field. */
   public record FacilityChanges(String name, String description, String location) {}
-
-  /**
-   * Result of changing opening hours: whether it was applied, and the IDs of bookings it cancels.
-   */
-  public record OpeningHoursChange(boolean applied, List<UUID> cancelledBookingIds) {}
 }

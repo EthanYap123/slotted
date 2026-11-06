@@ -1,7 +1,9 @@
 package dev.ethanyap.slotted.booking.application;
 
+import dev.ethanyap.slotted.booking.domain.Blackout;
 import dev.ethanyap.slotted.booking.domain.Booking;
 import dev.ethanyap.slotted.booking.domain.BookingPolicy;
+import dev.ethanyap.slotted.booking.infrastructure.BlackoutRepository;
 import dev.ethanyap.slotted.common.ApiException;
 import dev.ethanyap.slotted.common.ErrorCode;
 import dev.ethanyap.slotted.facility.domain.Facility;
@@ -15,10 +17,12 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.stereotype.Component;
 
 /**
@@ -30,16 +34,19 @@ class BookingLookup {
   private final RoomRepository rooms;
   private final FacilityRepository facilities;
   private final UserRepository users;
+  private final BlackoutRepository blackouts;
   private final BookingPolicy policy;
 
   BookingLookup(
       RoomRepository rooms,
       FacilityRepository facilities,
       UserRepository users,
+      BlackoutRepository blackouts,
       BookingPolicy policy) {
     this.rooms = rooms;
     this.facilities = facilities;
     this.users = users;
+    this.blackouts = blackouts;
     this.policy = policy;
   }
 
@@ -54,6 +61,19 @@ class BookingLookup {
     return rooms
         .lockById(roomId)
         .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "No room with this ID."));
+  }
+
+  /** Every room in a facility, locked in a fixed order until the transaction ends (ADR-0006). */
+  List<Room> lockRoomsOf(UUID facilityId) {
+    return rooms.lockByFacilityId(facilityId);
+  }
+
+  /** Why the room is closed for this period, if a blackout covers any of it (BR-5). */
+  Optional<String> blackoutReason(Room room, Instant from, Instant to) {
+    return blackouts.findOverlapping(room.getFacilityId(), from, to).stream()
+        .filter(b -> b.covers(room.getId(), from, to))
+        .map(Blackout::getReason)
+        .findFirst();
   }
 
   Facility facilityOf(Room room) {
@@ -73,11 +93,17 @@ class BookingLookup {
         booking, room, facility, booking.effectiveStatus(now, policy), bookerName);
   }
 
-  /** Views for a page of bookings, loading rooms, facilities and names in a few queries. */
+  /** Views for a page of bookings. */
   Page<BookingView> views(Page<Booking> page, Instant now, boolean withNames) {
+    return new PageImpl<>(
+        viewsOf(page.getContent(), now, withNames), page.getPageable(), page.getTotalElements());
+  }
+
+  /** Views for a list of bookings, loading rooms, facilities and names in a few queries. */
+  List<BookingView> viewsOf(List<Booking> bookings, Instant now, boolean withNames) {
     var roomIds = new HashSet<UUID>();
     var userIds = new HashSet<UUID>();
-    page.forEach(
+    bookings.forEach(
         b -> {
           roomIds.add(b.getRoomId());
           userIds.add(b.getUserId());
@@ -93,12 +119,14 @@ class BookingLookup {
             ? users.findAllById(userIds).stream()
                 .collect(Collectors.toMap(User::getId, User::getFullName))
             : Map.<UUID, String>of();
-    return page.map(
-        b -> {
-          var room = roomsById.get(b.getRoomId());
-          return view(
-              b, room, facilitiesById.get(room.getFacilityId()), now, names.get(b.getUserId()));
-        });
+    return bookings.stream()
+        .map(
+            b -> {
+              var room = roomsById.get(b.getRoomId());
+              return view(
+                  b, room, facilitiesById.get(room.getFacilityId()), now, names.get(b.getUserId()));
+            })
+        .toList();
   }
 
   private static <T> Map<UUID, T> byId(List<T> items, Function<T, UUID> id) {

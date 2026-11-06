@@ -125,6 +125,15 @@ public class Booking {
     markCancelled(now, staffId, reason);
   }
 
+  /** The system cancels an active booking, for example when the account is disabled. */
+  public void cancelBySystem(Instant now, BookingPolicy policy, String reason) {
+    var effective = effectiveStatus(now, policy);
+    if (!effective.blocksRoom()) {
+      throw notCancellable(effective);
+    }
+    markCancelled(now, null, reason);
+  }
+
   private void markCancelled(Instant now, UUID by, String reason) {
     status = BookingStatus.CANCELLED;
     cancelledAt = now;
