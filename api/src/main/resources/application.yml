@@ -35,6 +35,8 @@ spring:
     locations: classpath:db/migration
 
 server:
+  # Hosts set PORT. 8090 locally because 8080 is often taken by other tools.
+  port: ${PORT:8090}
   shutdown: graceful
   error:
     include-stacktrace: never

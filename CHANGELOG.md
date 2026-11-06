@@ -27,6 +27,10 @@ All notable changes to this project are documented here. The format follows [Kee
 - Recommended branch protection for `main` as a GitHub ruleset in `.github/rulesets/main.json`, explained in `docs/BRANCH_PROTECTION.md`.
 - Dependabot skips major updates that are deferred on purpose: Spring Boot 4, ESLint 10, TypeScript 7, `@types/node` beyond the Node.js runtime, and Postgres 18.
 
+### Changed
+
+- The API now runs on port 8090 locally, so it can run alongside other tools that use 8080. Hosts can still set the port with `PORT`.
+
 ### Fixed
 
 - Hikari connection-pool timeouts are given in milliseconds; the duration format stopped the API from starting.
