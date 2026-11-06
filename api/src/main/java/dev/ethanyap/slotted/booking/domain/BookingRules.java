@@ -32,7 +32,8 @@ public final class BookingRules {
       int capacity,
       int maxBookingMinutes,
       ZoneId zone,
-      Optional<OpeningPeriod> openingHoursThatDay) {}
+      Optional<OpeningPeriod> openingHoursThatDay,
+      Optional<String> blackoutReason) {}
 
   /**
    * What is already true for the person booking. Quotas only apply to students.
@@ -79,6 +80,9 @@ public final class BookingRules {
       throw fail(ErrorCode.ROOM_INACTIVE, "This room is not available for booking.");
     }
     checkOpeningHours(start, end, room.openingHoursThatDay());
+    if (room.blackoutReason().isPresent()) {
+      throw fail(ErrorCode.BLACKOUT, "Closed at this time: " + room.blackoutReason().get());
+    }
     if (request.attendees() > room.capacity()) {
       throw fail(
           ErrorCode.OVER_CAPACITY, "This room holds at most " + room.capacity() + " people.");
@@ -93,11 +97,8 @@ public final class BookingRules {
     if (hours.isEmpty()) {
       throw fail(ErrorCode.OUTSIDE_OPENING_HOURS, "The facility is closed on this day.");
     }
-    var open = hours.get();
-    var sameDay = start.toLocalDate().equals(end.toLocalDate());
-    if (!sameDay
-        || start.toLocalTime().isBefore(open.opensAt())
-        || end.toLocalTime().isAfter(open.closesAt())) {
+    if (!withinOpeningHours(start, end, hours)) {
+      var open = hours.get();
       throw fail(
           ErrorCode.OUTSIDE_OPENING_HOURS,
           "The facility is open from "
@@ -106,6 +107,16 @@ public final class BookingRules {
               + TIME.format(open.closesAt())
               + " on this day.");
     }
+  }
+
+  /** Whether a booking starts and ends on one day, inside that day's opening hours. */
+  public static boolean withinOpeningHours(
+      ZonedDateTime start, ZonedDateTime end, Optional<OpeningPeriod> hours) {
+    return hours
+        .filter(open -> start.toLocalDate().equals(end.toLocalDate()))
+        .filter(open -> !start.toLocalTime().isBefore(open.opensAt()))
+        .filter(open -> !end.toLocalTime().isAfter(open.closesAt()))
+        .isPresent();
   }
 
   private static void checkStudentLimits(

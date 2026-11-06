@@ -33,7 +33,7 @@ class BookingRulesTest {
   private static final OpeningPeriod WEDNESDAY_8_TO_22 =
       new OpeningPeriod(DayOfWeek.WEDNESDAY, LocalTime.of(8, 0), LocalTime.of(22, 0));
   private static final RoomFacts ROOM =
-      new RoomFacts(true, 6, 120, SGT, Optional.of(WEDNESDAY_8_TO_22));
+      new RoomFacts(true, 6, 120, SGT, Optional.of(WEDNESDAY_8_TO_22), Optional.empty());
   private static final BookerFacts STUDENT = new BookerFacts(true, 0, 0, false, Optional.empty());
   private static final BookerFacts MANAGER =
       new BookerFacts(false, 99, 9999, true, Optional.empty());
@@ -100,7 +100,7 @@ class BookingRulesTest {
     var latest = NOW.plus(Duration.ofDays(14));
     var tuesdayAllDay =
         new OpeningPeriod(DayOfWeek.TUESDAY, LocalTime.of(0, 0), LocalTime.of(23, 30));
-    var room = new RoomFacts(true, 6, 120, SGT, Optional.of(tuesdayAllDay));
+    var room = new RoomFacts(true, 6, 120, SGT, Optional.of(tuesdayAllDay), Optional.empty());
     // 17 November 2026 09:00 SGT is before "now + 14 days" (09:12); 09:30 is after it.
     assertThatCode(() -> check(request("2026-11-17T09:00", "2026-11-17T10:00", 2), room, STUDENT))
         .doesNotThrowAnyException();
@@ -114,7 +114,8 @@ class BookingRulesTest {
 
   @Test
   void inactiveRoomsCannotBeBooked() {
-    var inactive = new RoomFacts(false, 6, 120, SGT, Optional.of(WEDNESDAY_8_TO_22));
+    var inactive =
+        new RoomFacts(false, 6, 120, SGT, Optional.of(WEDNESDAY_8_TO_22), Optional.empty());
 
     assertFails(
         request("2026-11-04T10:00", "2026-11-04T11:00", 2),
@@ -130,7 +131,8 @@ class BookingRulesTest {
     "2026-11-04T23:30,2026-11-05T00:30"
   })
   void bookingsStayInsideOpeningHoursOnOneDay(String start, String end) {
-    var allDays = new RoomFacts(true, 6, 120, SGT, Optional.of(WEDNESDAY_8_TO_22));
+    var allDays =
+        new RoomFacts(true, 6, 120, SGT, Optional.of(WEDNESDAY_8_TO_22), Optional.empty());
 
     assertFails(request(start, end, 2), allDays, STUDENT, ErrorCode.OUTSIDE_OPENING_HOURS);
   }
@@ -145,11 +147,23 @@ class BookingRulesTest {
 
   @Test
   void aClosedDayCannotBeBooked() {
-    var closed = new RoomFacts(true, 6, 120, SGT, Optional.empty());
+    var closed = new RoomFacts(true, 6, 120, SGT, Optional.empty(), Optional.empty());
 
     assertThatThrownBy(
             () -> check(request("2026-11-04T10:00", "2026-11-04T11:00", 2), closed, STUDENT))
         .hasMessage("The facility is closed on this day.");
+  }
+
+  @Test
+  void aBlackoutBlocksBookingAndGivesItsReason() {
+    var closed =
+        new RoomFacts(true, 6, 120, SGT, Optional.of(WEDNESDAY_8_TO_22), Optional.of("Exams"));
+
+    assertThatThrownBy(
+            () -> check(request("2026-11-04T10:00", "2026-11-04T11:00", 2), closed, STUDENT))
+        .isInstanceOfSatisfying(
+            ApiException.class, e -> assertThat(e.code()).isEqualTo(ErrorCode.BLACKOUT))
+        .hasMessageContaining("Exams");
   }
 
   @Test

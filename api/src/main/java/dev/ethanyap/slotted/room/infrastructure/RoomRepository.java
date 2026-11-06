@@ -27,4 +27,9 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query("select r from Room r where r.id = :id")
   Optional<Room> lockById(UUID id);
+
+  /** Locks a facility's rooms in ID order, so two callers cannot lock them in opposite orders. */
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("select r from Room r where r.facilityId = :facilityId order by r.id")
+  List<Room> lockByFacilityId(UUID facilityId);
 }

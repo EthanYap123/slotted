@@ -35,6 +35,7 @@ function room(name = 'Room A'): RoomAvailability {
       cell('12:30', 'FREE'),
       cell('13:00', 'BOOKED'),
       cell('13:30', 'MINE'),
+      cell('14:00', 'BLACKOUT'),
     ],
   }
 }
@@ -100,6 +101,9 @@ describe('the timeline', () => {
       'true',
     )
     expect(screen.getByRole('button', { name: 'Room A, 13:30, your booking' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Room A, 14:00, closed for a blackout' }),
+    ).toHaveAttribute('aria-disabled', 'true')
     expect(screen.getByRole('columnheader', { name: '11:00' })).toBeInTheDocument()
     expect(screen.getByText('All times are Singapore time.')).toBeInTheDocument()
   })
@@ -121,7 +125,9 @@ describe('the timeline', () => {
     expect(screen.getByRole('button', { name: 'Room A, 11:00, free' })).toHaveFocus()
 
     await user.keyboard('{End}')
-    expect(screen.getByRole('button', { name: 'Room A, 13:30, your booking' })).toHaveFocus()
+    expect(
+      screen.getByRole('button', { name: 'Room A, 14:00, closed for a blackout' }),
+    ).toHaveFocus()
 
     await user.keyboard('{Home}')
     expect(screen.getByRole('button', { name: 'Room A, 10:00, in the past' })).toHaveFocus()
