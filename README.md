@@ -28,7 +28,7 @@ You need Java 21 or newer, Node.js 22 or newer and Docker.
 cp .env.example .env
 docker compose up -d --wait
 
-# 2. Start the API on http://localhost:8080 (Flyway migrates the database on startup)
+# 2. Start the API on http://localhost:8090 (Flyway migrates the database on startup)
 cp api/.env.example api/.env
 cd api && ./mvnw spring-boot:run
 
