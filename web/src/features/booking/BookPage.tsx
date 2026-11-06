@@ -4,13 +4,22 @@ import { errorMessage } from '../../api/errors'
 import { useSession } from '../../api/session'
 import { addDays, formatDate, formatDay, formatTime, todayInSingapore } from '../../lib/time'
 import { BookingDialog } from './BookingDialog'
-import { useAvailability, useFacilities, type Booking, type RoomAvailability } from './bookingApi'
+import {
+  useAvailability,
+  useFacilities,
+  type Booking,
+  type RoomAvailability,
+  type Series,
+} from './bookingApi'
 import { Timeline, TimelineLegend } from './Timeline'
 
 /** How far ahead the picker goes; the API enforces the real limit (BR-3). */
 const BOOKING_WINDOW_DAYS = 14
 
-type Notice = { kind: 'booked'; booking: Booking } | { kind: 'taken'; message: string }
+type Notice =
+  | { kind: 'booked'; booking: Booking }
+  | { kind: 'series'; series: Series }
+  | { kind: 'taken'; message: string }
 
 export function BookPage() {
   const [params, setParams] = useSearchParams()
@@ -56,6 +65,19 @@ export function BookPage() {
           {formatTime(notice.booking.startAt)} to {formatTime(notice.booking.endAt)}.{' '}
           <Link to="/bookings">See my bookings</Link>
         </p>
+      )}
+      {notice?.kind === 'series' && (
+        <div className="notice notice-ok" role="status">
+          <p>
+            Booked {notice.series.bookings.length} of {notice.series.occurrencesRequested} dates.{' '}
+            <Link to="/bookings">See my bookings</Link>
+          </p>
+          {notice.series.skipped.map((skipped) => (
+            <p key={skipped.startAt}>
+              Skipped {formatDate(skipped.startAt)}: {skipped.detail ?? 'not available'}
+            </p>
+          ))}
+        </div>
       )}
       {notice?.kind === 'taken' && (
         <p className="notice notice-error" role="alert">
@@ -170,6 +192,10 @@ export function BookPage() {
           onBooked={(booking) => {
             setPicked(null)
             setNotice({ kind: 'booked', booking })
+          }}
+          onSeriesBooked={(series) => {
+            setPicked(null)
+            setNotice({ kind: 'series', series })
           }}
           onSlotTaken={(message) => {
             setPicked(null)

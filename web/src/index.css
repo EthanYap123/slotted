@@ -568,6 +568,21 @@ button.cell-free:hover {
   gap: 0.5rem;
 }
 
+.occurrences {
+  display: grid;
+  gap: 0.375rem;
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.occurrence-problem {
+  display: block;
+  margin-left: 1.25rem;
+  color: var(--danger);
+  font-size: 0.875rem;
+}
+
 /* My bookings */
 .segmented {
   display: inline-flex;

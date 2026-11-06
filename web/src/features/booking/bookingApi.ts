@@ -9,6 +9,9 @@ export type Booking = components['schemas']['Booking']
 export type BookingPage = components['schemas']['BookingPage']
 export type BookingInput = components['schemas']['BookingInput']
 export type BookingScope = 'upcoming' | 'past'
+export type SeriesInput = components['schemas']['SeriesInput']
+export type SeriesPreview = components['schemas']['SeriesPreview']
+export type Series = components['schemas']['Series']
 
 const PAGE_SIZE = 10
 
@@ -59,6 +62,32 @@ export function useCreateBooking() {
   return useMutation({
     mutationFn: (input: BookingInput) => request<Booking>('POST', '/bookings', { body: input }),
     // Also after an error: if the slot was just taken, the timeline must show it.
+    onSettled: refresh,
+  })
+}
+
+export function usePreviewSeries() {
+  return useMutation({
+    mutationFn: (input: SeriesInput) =>
+      request<SeriesPreview>('POST', '/booking-series/preview', { body: input }),
+  })
+}
+
+export function useCreateSeries() {
+  const refresh = useRefreshBookings()
+  return useMutation({
+    mutationFn: (input: SeriesInput) => request<Series>('POST', '/booking-series', { body: input }),
+    onSettled: refresh,
+  })
+}
+
+export function useCancelSeries() {
+  const refresh = useRefreshBookings()
+  return useMutation({
+    mutationFn: ({ id, fromDate, reason }: { id: string; fromDate: string; reason: string }) =>
+      request<Series>('POST', `/booking-series/${id}/cancel`, {
+        body: { fromDate, ...(reason.trim() ? { reason: reason.trim() } : {}) },
+      }),
     onSettled: refresh,
   })
 }

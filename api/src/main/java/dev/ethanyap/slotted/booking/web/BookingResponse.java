@@ -47,7 +47,7 @@ public record BookingResponse(
         view.facility().getId(),
         view.facility().getName(),
         b.getUserId(),
-        null,
+        b.getSeriesId(),
         b.getAttendees(),
         b.getPurpose(),
         b.getSource(),

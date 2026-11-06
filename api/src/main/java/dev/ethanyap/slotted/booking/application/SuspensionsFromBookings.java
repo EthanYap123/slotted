@@ -14,12 +14,12 @@ import org.springframework.transaction.annotation.Transactional;
 @Component
 public class SuspensionsFromBookings implements Suspensions {
 
-  private final BookingService bookings;
+  private final BookerFactsReader facts;
   private final UserRepository users;
   private final Clock clock;
 
-  public SuspensionsFromBookings(BookingService bookings, UserRepository users, Clock clock) {
-    this.bookings = bookings;
+  SuspensionsFromBookings(BookerFactsReader facts, UserRepository users, Clock clock) {
+    this.facts = facts;
     this.users = users;
     this.clock = clock;
   }
@@ -27,6 +27,6 @@ public class SuspensionsFromBookings implements Suspensions {
   @Override
   @Transactional(readOnly = true)
   public Map<UUID, Instant> suspendedUntil(Collection<UUID> userIds) {
-    return bookings.suspendedUntil(users.findAllById(userIds), clock.instant());
+    return facts.suspendedUntil(users.findAllById(userIds), clock.instant());
   }
 }

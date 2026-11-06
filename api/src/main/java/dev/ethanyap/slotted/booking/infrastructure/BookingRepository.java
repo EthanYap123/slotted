@@ -60,12 +60,23 @@ public interface BookingRepository
           + COUNTS)
   boolean userHasBookingBetween(UUID userId, Instant startAt, Instant endAt, Instant cutoff);
 
-  /** Bookings that have not started yet (BR-8). */
+  /** Single bookings, not part of a series, that have not started yet (BR-8). */
   @Query(
       "select count(b) from Booking b where b.userId = :userId and b.startAt > :now"
+          + " and b.seriesId is null"
           + " and b.status in (dev.ethanyap.slotted.booking.domain.BookingStatus.CONFIRMED,"
           + " dev.ethanyap.slotted.booking.domain.BookingStatus.CHECKED_IN)")
-  long countUpcoming(UUID userId, Instant now);
+  long countUpcomingSingles(UUID userId, Instant now);
+
+  /** Series with at least one date that has not started yet (BR-21). */
+  @Query(
+      "select count(distinct b.seriesId) from Booking b where b.userId = :userId"
+          + " and b.startAt > :now and b.seriesId is not null"
+          + " and b.status in (dev.ethanyap.slotted.booking.domain.BookingStatus.CONFIRMED,"
+          + " dev.ethanyap.slotted.booking.domain.BookingStatus.CHECKED_IN)")
+  long countUpcomingSeries(UUID userId, Instant now);
+
+  List<Booking> findBySeriesIdOrderByStartAt(UUID seriesId);
 
   /** A user's active bookings that have not started, soonest first. */
   @Query(

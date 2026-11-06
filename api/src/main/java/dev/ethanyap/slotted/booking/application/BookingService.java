@@ -3,10 +3,8 @@ package dev.ethanyap.slotted.booking.application;
 import dev.ethanyap.slotted.booking.domain.Booking;
 import dev.ethanyap.slotted.booking.domain.BookingPolicy;
 import dev.ethanyap.slotted.booking.domain.BookingRules;
-import dev.ethanyap.slotted.booking.domain.BookingRules.BookerFacts;
 import dev.ethanyap.slotted.booking.domain.BookingRules.RoomFacts;
 import dev.ethanyap.slotted.booking.domain.EffectiveStatus;
-import dev.ethanyap.slotted.booking.domain.Suspension;
 import dev.ethanyap.slotted.booking.infrastructure.BookingFilters;
 import dev.ethanyap.slotted.booking.infrastructure.BookingRepository;
 import dev.ethanyap.slotted.common.ApiException;
@@ -16,19 +14,14 @@ import dev.ethanyap.slotted.facility.domain.Facility;
 import dev.ethanyap.slotted.facility.domain.OpeningPeriod;
 import dev.ethanyap.slotted.user.application.ManagedFacilities;
 import dev.ethanyap.slotted.user.domain.Role;
-import dev.ethanyap.slotted.user.domain.User;
-import dev.ethanyap.slotted.user.infrastructure.UserRepository;
 import java.sql.SQLException;
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -45,7 +38,7 @@ public class BookingService {
 
   private final BookingRepository bookings;
   private final BookingLookup lookup;
-  private final UserRepository users;
+  private final BookerFactsReader facts;
   private final FacilityAccess access;
   private final ManagedFacilities managedFacilities;
   private final BookingPolicy policy;
@@ -54,14 +47,14 @@ public class BookingService {
   BookingService(
       BookingRepository bookings,
       BookingLookup lookup,
-      UserRepository users,
+      BookerFactsReader facts,
       FacilityAccess access,
       ManagedFacilities managedFacilities,
       BookingPolicy policy,
       Clock clock) {
     this.bookings = bookings;
     this.lookup = lookup;
-    this.users = users;
+    this.facts = facts;
     this.access = access;
     this.managedFacilities = managedFacilities;
     this.policy = policy;
@@ -77,11 +70,7 @@ public class BookingService {
    */
   @Transactional
   public BookingView create(UUID userId, NewBooking request) {
-    var user =
-        users
-            .lockById(userId)
-            .filter(User::isActive)
-            .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHENTICATED));
+    var user = lookup.lockActiveUser(userId);
     var room = lookup.lockRoom(request.roomId());
     var facility = lookup.facilityOf(room);
     var now = clock.instant();
@@ -98,7 +87,13 @@ public class BookingService {
             zone,
             openingHoursOn(facility, request.startAt(), zone),
             lookup.blackoutReason(room, request.startAt(), request.endAt())),
-        bookerFacts(user, request, zone, now, cutoff),
+        facts.factsFor(
+            user,
+            request.startAt(),
+            request.endAt(),
+            facts.upcomingBookings(user.getId(), now),
+            zone,
+            now),
         now,
         policy);
 
@@ -113,15 +108,7 @@ public class BookingService {
             request.endAt(),
             request.attendees(),
             request.purpose());
-    try {
-      booking = bookings.saveAndFlush(booking);
-    } catch (DataIntegrityViolationException e) {
-      if (isExclusionViolation(e)) {
-        throw slotTaken();
-      }
-      throw e;
-    }
-    return lookup.view(booking, room, facility, now, null);
+    return lookup.view(insert(bookings, booking), room, facility, now, null);
   }
 
   /** The owner cancels before the start; managers and admins cancel any active booking. */
@@ -170,8 +157,7 @@ public class BookingService {
    */
   @Transactional(readOnly = true)
   public Page<BookingView> list(UUID actorId, BookingQuery query, Pageable pageable) {
-    var actor =
-        users.findById(actorId).filter(User::isActive).orElseThrow(BookingService::forbidden);
+    var actor = lookup.activeUser(actorId);
     Collection<UUID> facilityIds;
     if (query.facilityId() != null) {
       if (!access.canManage(query.facilityId(), actorId)) {
@@ -209,54 +195,6 @@ public class BookingService {
     return lookup.views(bookings.findAll(filter, pageable), now, true);
   }
 
-  private BookerFacts bookerFacts(
-      User user, NewBooking request, ZoneId zone, Instant now, Instant cutoff) {
-    if (user.getRole() != Role.STUDENT) {
-      return new BookerFacts(false, 0, 0, false, Optional.empty());
-    }
-    var day = request.startAt().atZone(zone).toLocalDate();
-    var dayStart = day.atStartOfDay(zone).toInstant();
-    var dayEnd = day.plusDays(1).atStartOfDay(zone).toInstant();
-    var minutesThatDay =
-        bookings.findCountingStartingBetween(user.getId(), dayStart, dayEnd, cutoff).stream()
-            .mapToLong(b -> Duration.between(b.getStartAt(), b.getEndAt()).toMinutes())
-            .sum();
-    return new BookerFacts(
-        true,
-        bookings.countUpcoming(user.getId(), now),
-        minutesThatDay,
-        bookings.userHasBookingBetween(user.getId(), request.startAt(), request.endAt(), cutoff),
-        suspendedUntil(List.of(user), now).values().stream().findFirst());
-  }
-
-  /** Ends of suspensions in force for these users (BR-18). */
-  Map<UUID, Instant> suspendedUntil(Collection<User> forUsers, Instant now) {
-    if (forUsers.isEmpty()) {
-      return Map.of();
-    }
-    var since = now.minus(policy.noShowPeriod()).minus(policy.noShowGrace());
-    var byUser =
-        bookings
-            .findNoShows(forUsers.stream().map(User::getId).toList(), since, noShowCutoff(now))
-            .stream()
-            .collect(
-                Collectors.groupingBy(
-                    BookingRepository.NoShow::getUserId,
-                    Collectors.mapping(
-                        n -> n.getStartAt().plus(policy.noShowGrace()), Collectors.toList())));
-    return forUsers.stream()
-        .flatMap(
-            u ->
-                Suspension.until(
-                    byUser.getOrDefault(u.getId(), List.of()),
-                    u.getSuspensionClearedAt(),
-                    now,
-                    policy)
-                    .map(until -> Map.entry(u.getId(), until))
-                    .stream())
-        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-  }
-
   private Optional<OpeningPeriod> openingHoursOn(Facility facility, Instant at, ZoneId zone) {
     var day = at.atZone(zone).getDayOfWeek();
     return facility.getOpeningHours().stream().filter(p -> p.dayOfWeek() == day).findFirst();
@@ -264,6 +202,21 @@ public class BookingService {
 
   private Instant noShowCutoff(Instant now) {
     return now.minus(policy.noShowGrace());
+  }
+
+  /**
+   * Inserts a booking. The exclusion constraint has the last word (ADR-0001): if it refuses the
+   * row, the slot was taken.
+   */
+  static Booking insert(BookingRepository bookings, Booking booking) {
+    try {
+      return bookings.saveAndFlush(booking);
+    } catch (DataIntegrityViolationException e) {
+      if (isExclusionViolation(e)) {
+        throw slotTaken();
+      }
+      throw e;
+    }
   }
 
   private static boolean isExclusionViolation(Throwable e) {
@@ -275,7 +228,7 @@ public class BookingService {
     return false;
   }
 
-  private static ApiException slotTaken() {
+  static ApiException slotTaken() {
     return new ApiException(
         ErrorCode.SLOT_TAKEN, "Someone else has booked this room for some or all of that time.");
   }

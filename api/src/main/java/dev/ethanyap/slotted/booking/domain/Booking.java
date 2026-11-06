@@ -30,6 +30,7 @@ public class Booking {
 
   private UUID roomId;
   private UUID userId;
+  private UUID seriesId;
   private Instant startAt;
   private Instant endAt;
 
@@ -64,6 +65,21 @@ public class Booking {
     this.purpose = purpose == null || purpose.isBlank() ? null : purpose.strip();
     this.status = BookingStatus.CONFIRMED;
     this.source = BookingSource.DIRECT;
+  }
+
+  /** One date of a recurring booking. */
+  public static Booking occurrence(
+      UUID seriesId,
+      UUID roomId,
+      UUID userId,
+      Instant startAt,
+      Instant endAt,
+      int attendees,
+      String purpose) {
+    var booking = new Booking(roomId, userId, startAt, endAt, attendees, purpose);
+    booking.seriesId = seriesId;
+    booking.source = BookingSource.SERIES;
+    return booking;
   }
 
   /** Status at {@code now}, derived from stored facts (ADR-0004). */
@@ -161,6 +177,10 @@ public class Booking {
 
   public UUID getUserId() {
     return userId;
+  }
+
+  public UUID getSeriesId() {
+    return seriesId;
   }
 
   public Instant getStartAt() {

@@ -24,7 +24,10 @@ public record BookingProperties(
     @NotNull Duration noShowGrace,
     @Min(1) int noShowLimit,
     @NotNull Duration noShowPeriod,
-    @NotNull Duration suspension) {
+    @NotNull Duration suspension,
+    @Min(2) int maxSeriesOccurrences,
+    @NotNull Duration seriesHorizon,
+    @Min(1) int maxActiveSeries) {
 
   /** Registers the properties and exposes the policy as a bean. */
   @Configuration(proxyBeanMethods = false)
@@ -42,7 +45,10 @@ public record BookingProperties(
           p.noShowGrace(),
           p.noShowLimit(),
           p.noShowPeriod(),
-          p.suspension());
+          p.suspension(),
+          p.maxSeriesOccurrences(),
+          p.seriesHorizon(),
+          p.maxActiveSeries());
     }
   }
 }
