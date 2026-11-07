@@ -3,6 +3,7 @@ package dev.ethanyap.slotted.booking.application;
 import dev.ethanyap.slotted.booking.domain.Blackout;
 import dev.ethanyap.slotted.booking.domain.Booking;
 import dev.ethanyap.slotted.booking.domain.BookingPolicy;
+import dev.ethanyap.slotted.booking.domain.BookingRules.RoomFacts;
 import dev.ethanyap.slotted.booking.infrastructure.BlackoutRepository;
 import dev.ethanyap.slotted.common.ApiException;
 import dev.ethanyap.slotted.common.ErrorCode;
@@ -13,6 +14,7 @@ import dev.ethanyap.slotted.room.infrastructure.RoomRepository;
 import dev.ethanyap.slotted.user.domain.User;
 import dev.ethanyap.slotted.user.infrastructure.UserRepository;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
@@ -65,6 +67,11 @@ class BookingLookup {
         .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHENTICATED));
   }
 
+  /** The same lock without waiting; empty if the user is busy or no longer active. */
+  Optional<User> tryLockActiveUser(UUID userId) {
+    return users.tryLockById(userId).filter(User::isActive);
+  }
+
   Room room(UUID roomId) {
     return rooms
         .findById(roomId)
@@ -89,6 +96,25 @@ class BookingLookup {
         .filter(b -> b.covers(room.getId(), from, to))
         .map(Blackout::getReason)
         .findFirst();
+  }
+
+  /** What the booking rules need to know about a room for this period. */
+  RoomFacts roomFacts(Room room, Facility facility, Instant start, Instant end) {
+    var zone = ZoneId.of(facility.getTimeZone());
+    var day = start.atZone(zone).getDayOfWeek();
+    return new RoomFacts(
+        room.isActive(),
+        room.getCapacity(),
+        room.getMaxBookingMinutes(),
+        zone,
+        facility.getOpeningHours().stream().filter(p -> p.dayOfWeek() == day).findFirst(),
+        blackoutReason(room, start, end));
+  }
+
+  /** Names of these rooms, by ID. */
+  Map<UUID, String> roomNames(Collection<UUID> roomIds) {
+    return rooms.findAllById(new HashSet<>(roomIds)).stream()
+        .collect(Collectors.toMap(Room::getId, Room::getName));
   }
 
   Facility facilityOf(Room room) {

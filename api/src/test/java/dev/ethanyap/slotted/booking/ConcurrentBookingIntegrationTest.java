@@ -171,6 +171,98 @@ class ConcurrentBookingIntegrationTest {
     assertThat(activeBookingsInRoom()).isZero();
   }
 
+  /**
+   * ADR-0007. A student on the waitlist makes a third booking while the slot they wait for frees
+   * up. Neither request may fail, and the student may never end up over the quota of three. That
+   * promotion never waits for a student is checked by {@code WaitlistIntegrationTest}.
+   */
+  @RepeatedTest(5)
+  void promotionRacingTheStudentsOwnBookingNeverBeatsTheQuota() throws Exception {
+    var holder = api.newStudent();
+    var student = api.newStudent();
+    var held = book(holder.token(), tomorrow, "10:00", "11:00").getBody().path("id").asText();
+    api.post(
+        "/api/v1/waitlist",
+        Map.of(
+            "roomId", roomId, "startAt", sgt(tomorrow, "10:00"), "endAt", sgt(tomorrow, "11:00")),
+        student.token());
+    book(student.token(), tomorrow.plusDays(1), "09:00", "10:00");
+    book(student.token(), tomorrow.plusDays(2), "09:00", "10:00");
+    List<Callable<ResponseEntity<JsonNode>>> calls =
+        List.of(
+            () -> api.post("/api/v1/bookings/" + held + "/cancel", Map.of(), holder.token()),
+            () -> book(student.token(), tomorrow.plusDays(3), "09:00", "10:00"));
+
+    var responses = race(calls);
+
+    assertThat(responses.get(0).getStatusCode().value()).as(summary(responses)).isEqualTo(200);
+    assertThat(responses.get(1).getStatusCode().value()).as(summary(responses)).isIn(201, 422);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM booking WHERE user_id = ?::uuid AND status = 'CONFIRMED'",
+                Integer.class,
+                student.id()))
+        .isLessThanOrEqualTo(3);
+  }
+
+  /**
+   * Many students cancel, book and join at once around one busy slot. Every request gets a proper
+   * answer, never a server error from a deadlock, and bookings never overlap.
+   */
+  @RepeatedTest(3)
+  void cancellingBookingAndJoiningAtOnceAllGetAProperAnswer() throws Exception {
+    var holders = List.of(api.newStudent(), api.newStudent(), api.newStudent());
+    var times = List.of("09:00", "10:00", "11:00");
+    var waiting = new ArrayList<TestUser>();
+    var calls = new ArrayList<Callable<ResponseEntity<JsonNode>>>();
+    for (var i = 0; i < holders.size(); i++) {
+      var holder = holders.get(i);
+      var start = times.get(i);
+      var end = LocalTime.parse(start).plusHours(1).toString();
+      var booking = book(holder.token(), tomorrow, start, end).getBody().path("id").asText();
+      var inQueue = api.newStudent();
+      waiting.add(inQueue);
+      api.post(
+          "/api/v1/waitlist",
+          Map.of("roomId", roomId, "startAt", sgt(tomorrow, start), "endAt", sgt(tomorrow, end)),
+          inQueue.token());
+      calls.add(
+          () -> api.post("/api/v1/bookings/" + booking + "/cancel", Map.of(), holder.token()));
+      var latecomer = api.newStudent();
+      calls.add(() -> book(latecomer.token(), tomorrow, start, end));
+      var joiner = api.newStudent();
+      calls.add(
+          () ->
+              api.post(
+                  "/api/v1/waitlist",
+                  Map.of(
+                      "roomId",
+                      roomId,
+                      "startAt",
+                      sgt(tomorrow, start),
+                      "endAt",
+                      sgt(tomorrow, end)),
+                  joiner.token()));
+    }
+
+    var responses = race(calls);
+
+    assertThat(responses)
+        .as(summary(responses))
+        .allSatisfy(r -> assertThat(r.getStatusCode().is5xxServerError()).isFalse());
+    // Each freed hour holds one booking: the queue's, or a latecomer's if it got in first.
+    assertThat(activeBookingsInRoom()).isEqualTo(times.size());
+    for (var inQueue : waiting) {
+      assertThat(
+              api.get("/api/v1/waitlist/mine", inQueue.token())
+                  .getBody()
+                  .get(0)
+                  .path("status")
+                  .asText())
+          .isIn("PROMOTED", "WAITING");
+    }
+  }
+
   /** The constraint on its own, without the application: SQL that tries to double book fails. */
   @Test
   void theDatabaseRefusesOverlappingActiveBookingsWhoeverWritesThem() {

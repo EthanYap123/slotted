@@ -131,7 +131,7 @@ public class ScheduleController {
     }
   }
 
-  /** Schema {@code ImpactPreview}. The waitlist part arrives with waitlists (#52). */
+  /** Schema {@code ImpactPreview}. */
   public record ImpactResponse(
       boolean applied, List<BookingResponse> affectedBookings, int affectedWaitlistEntries) {
 
@@ -139,7 +139,7 @@ public class ScheduleController {
       return new ImpactResponse(
           impact.applied(),
           impact.affectedBookings().stream().map(v -> BookingResponse.from(v, policy)).toList(),
-          0);
+          impact.affectedWaitlistEntries());
     }
   }
 }

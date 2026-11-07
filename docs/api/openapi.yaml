@@ -778,6 +778,9 @@ paths:
       tags: [Waitlist]
       operationId: joinWaitlist
       summary: Wait for an exact slot that is taken (BR-24)
+      description: |
+        The slot must pass every booking rule except being free. If it frees up, the student gets a
+        confirmed booking for one person, with source `WAITLIST` (BR-26).
       x-roles: [STUDENT]
       requestBody:
         required: true

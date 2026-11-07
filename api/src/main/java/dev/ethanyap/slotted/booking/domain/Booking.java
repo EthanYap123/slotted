@@ -24,6 +24,9 @@ import org.hibernate.annotations.UpdateTimestamp;
 @Table(name = "booking")
 public class Booking {
 
+  /** A waitlist request names only a slot, so promoted bookings are for one person. */
+  public static final int PROMOTED_ATTENDEES = 1;
+
   @Id
   @GeneratedValue(strategy = GenerationType.UUID)
   private UUID id;
@@ -79,6 +82,13 @@ public class Booking {
     var booking = new Booking(roomId, userId, startAt, endAt, attendees, purpose);
     booking.seriesId = seriesId;
     booking.source = BookingSource.SERIES;
+    return booking;
+  }
+
+  /** A booking made by promoting a waitlist entry (BR-26). */
+  public static Booking promoted(UUID roomId, UUID userId, Instant startAt, Instant endAt) {
+    var booking = new Booking(roomId, userId, startAt, endAt, PROMOTED_ATTENDEES, null);
+    booking.source = BookingSource.WAITLIST;
     return booking;
   }
 

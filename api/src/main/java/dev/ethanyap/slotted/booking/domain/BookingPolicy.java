@@ -18,6 +18,7 @@ import java.time.Duration;
  * @param maxSeriesOccurrences most dates in a recurring booking (BR-20)
  * @param seriesHorizon how far ahead the last date of a series may start (BR-20)
  * @param maxActiveSeries most series with upcoming dates a student may hold (BR-21)
+ * @param maxWaiting most waitlist entries a student may have waiting (BR-24)
  */
 public record BookingPolicy(
     Duration window,
@@ -31,7 +32,8 @@ public record BookingPolicy(
     Duration suspension,
     int maxSeriesOccurrences,
     Duration seriesHorizon,
-    int maxActiveSeries) {
+    int maxActiveSeries,
+    int maxWaiting) {
 
   /** The same rules for one date of a series: the series limit replaces the booking window. */
   public BookingPolicy forSeries() {
@@ -47,7 +49,8 @@ public record BookingPolicy(
         suspension,
         maxSeriesOccurrences,
         seriesHorizon,
-        maxActiveSeries);
+        maxActiveSeries,
+        maxWaiting);
   }
 
   /** The values approved in the PRD, for tests. */
@@ -64,6 +67,7 @@ public record BookingPolicy(
         Duration.ofDays(7),
         8,
         Duration.ofDays(56),
-        1);
+        1,
+        3);
   }
 }

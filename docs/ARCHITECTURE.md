@@ -96,10 +96,9 @@ Planned packages under `api/src/main/java/.../slotted/`:
 ```
 auth/         sign-in, tokens, password policy, security config
 user/         users, roles, suspension
-facility/     facilities, opening hours, managers, blackouts
+facility/     facilities, opening hours, managers
 room/         rooms, check-in tokens and QR codes
-booking/      bookings, availability, settle step, check-in, series
-waitlist/     waitlist entries and promotion
+booking/      bookings, availability, settle step, check-in, series, blackouts, waitlist
 audit/        audit log writer and queries
 notification/ email outbox, templates, dispatcher, EmailSender
 analytics/    utilisation queries
@@ -200,19 +199,21 @@ Every transition writes an audit record. Transitions that free time (`CANCELLED`
 
 ```mermaid
 flowchart TD
-    freed["Time freed in room R<br/>(cancel, no-show settled, ended early)"] --> find["Find WAITING entries in R whose slot<br/>overlaps the freed time and has not started,<br/>oldest first"]
+    freed["Time freed in room R<br/>(cancel, no-show settled, ended early)"] --> find["Find WAITING entries in R whose slot<br/>has not started, oldest first"]
     find --> next{"Next entry?"}
     next -- none --> done(["Done"])
     next -- yes --> free{"Slot completely free now?"}
     free -- no --> next
-    free -- yes --> lock["Lock that student's row,<br/>check quotas, suspension, overlap"]
+    free -- yes --> lock["Try that student's row lock without waiting<br/>(busy: entry stays WAITING),<br/>check quotas, suspension, overlap"]
     lock --> eligible{"Eligible?"}
     eligible -- "no: entry stays WAITING" --> next
     eligible -- yes --> book["INSERT booking (source WAITLIST)<br/>entry → PROMOTED<br/>audit + outbox email"]
     book --> next
 ```
 
-This runs inside the transaction that freed the time, so a promoted booking and the cancellation commit together or not at all. The exclusion constraint still applies to promoted bookings, so promotion can never create an overlap even if two cancellations race.
+A cancellation, blackout or opening-hours change promotes inside the transaction that freed the time, so they commit together or not at all. A booking attempt first settles and promotes in a transaction of its own, so its own failure cannot undo the promotion. Promotion never waits for a student's lock while it holds the room ([ADR-0007](adr/0007-promote-from-the-waitlist-without-waiting.md)). The exclusion constraint still applies to promoted bookings, so promotion can never create an overlap even if two cancellations race.
+
+A waitlist request names only a slot, so a promoted booking is for one person and has no purpose.
 
 ## 7. Time-based rules and the scheduled sweep
 

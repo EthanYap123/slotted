@@ -12,6 +12,7 @@ import {
   type Series,
   type SeriesInput,
   type SeriesPreview,
+  type SlotRequest,
 } from './bookingApi'
 import { endOptions } from './endOptions'
 
@@ -31,7 +32,8 @@ export function BookingDialog({
   startIndex: number
   onBooked: (booking: Booking) => void
   onSeriesBooked: (series: Series) => void
-  onSlotTaken: (message: string) => void
+  /** `slot` is set when the person could wait for it instead. */
+  onSlotTaken: (message: string, slot: SlotRequest | null) => void
   onClose: () => void
 }) {
   const startAt = room.cells[startIndex]?.startAt ?? ''
@@ -73,7 +75,10 @@ export function BookingDialog({
         onSuccess: onBooked,
         onError: (error) => {
           if (error instanceof ApiError && error.code === 'SLOT_TAKEN') {
-            onSlotTaken(error.message)
+            onSlotTaken(
+              error.message,
+              error.waitlistable ? { roomId: room.roomId, startAt, endAt } : null,
+            )
           }
         },
       },

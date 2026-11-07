@@ -3,12 +3,14 @@ package dev.ethanyap.slotted.user.infrastructure;
 import dev.ethanyap.slotted.user.domain.Role;
 import dev.ethanyap.slotted.user.domain.User;
 import jakarta.persistence.LockModeType;
+import jakarta.persistence.QueryHint;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.QueryHints;
 
 public interface UserRepository extends JpaRepository<User, UUID>, JpaSpecificationExecutor<User> {
 
@@ -26,4 +28,13 @@ public interface UserRepository extends JpaRepository<User, UUID>, JpaSpecificat
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query("select u from User u where u.id = :id")
   Optional<User> lockById(UUID id);
+
+  /**
+   * The same lock, but empty straight away if someone else holds it (Postgres {@code SKIP LOCKED}),
+   * for callers that must not wait because they already hold a room (ADR-0007).
+   */
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @QueryHints(@QueryHint(name = "jakarta.persistence.lock.timeout", value = "-2"))
+  @Query("select u from User u where u.id = :id")
+  Optional<User> tryLockById(UUID id);
 }

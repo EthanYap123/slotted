@@ -10,6 +10,7 @@ Each record explains one significant decision: the context, what was decided, an
 | [0004](0004-lazy-evaluation-of-time-based-rules.md) | Evaluate time-based rules lazily; a scheduled job only tidies up | Accepted |
 | [0005](0005-spring-boot-3-5-and-maven.md) | Build the API on Spring Boot 3.5 with Maven | Accepted |
 | [0006](0006-lock-the-room-while-booking.md) | Lock the room while booking to avoid deadlocks | Accepted (refines 0001) |
+| [0007](0007-promote-from-the-waitlist-without-waiting.md) | Promote from the waitlist without waiting for students, in a transaction of its own | Accepted (refines 0004, 0006) |
 
 ## Adding a record
 

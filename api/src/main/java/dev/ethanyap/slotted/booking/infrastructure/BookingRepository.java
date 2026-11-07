@@ -4,6 +4,7 @@ import dev.ethanyap.slotted.booking.domain.Booking;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -77,6 +78,10 @@ public interface BookingRepository
   long countUpcomingSeries(UUID userId, Instant now);
 
   List<Booking> findBySeriesIdOrderByStartAt(UUID seriesId);
+
+  /** The room a booking is in, read without loading the booking, so it can be locked first. */
+  @Query("select b.roomId from Booking b where b.id = :id")
+  Optional<UUID> findRoomIdById(UUID id);
 
   /** A user's active bookings that have not started, soonest first. */
   @Query(

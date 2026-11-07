@@ -1,6 +1,7 @@
 import { useState, type SyntheticEvent } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { errorMessage } from '../../api/errors'
+import { useSession } from '../../api/session'
 import { Modal } from '../../components/Modal'
 import { dateInSingapore, formatDate, formatTime, isInFuture, isWithinHours } from '../../lib/time'
 import {
@@ -10,6 +11,7 @@ import {
   type Booking,
   type BookingScope,
 } from './bookingApi'
+import { WaitlistSection } from './WaitlistSection'
 
 /** Closer to the start than this counts as a late cancellation (BR-13); the API records it. */
 const LATE_CANCELLATION_HOURS = 2
@@ -35,6 +37,7 @@ export function MyBookingsPage() {
   const bookings = useMyBookings(scope, page)
   const [cancelling, setCancelling] = useState<Cancelling | null>(null)
   const [cancelled, setCancelled] = useState<string | null>(null)
+  const isStudent = useSession().user?.role === 'STUDENT'
 
   function show(nextScope: BookingScope, nextPage = 0) {
     setCancelled(null)
@@ -134,6 +137,8 @@ export function MyBookingsPage() {
         </nav>
       )}
 
+      {isStudent && <WaitlistSection scope={scope} />}
+
       {cancelling && (
         <CancelDialog
           booking={cancelling.booking}
@@ -173,6 +178,7 @@ function BookingCard({
           {booking.purpose ? `, ${booking.purpose}` : ''}
         </p>
         {booking.seriesId && <p className="booking-detail">Repeating booking</p>}
+        {booking.source === 'WAITLIST' && <p className="booking-detail">From the waitlist</p>}
         {booking.cancelReason && <p className="booking-detail">Reason: {booking.cancelReason}</p>}
         {booking.lateCancellation && <p className="booking-detail">Late cancellation</p>}
       </div>

@@ -12,6 +12,8 @@ export type BookingScope = 'upcoming' | 'past'
 export type SeriesInput = components['schemas']['SeriesInput']
 export type SeriesPreview = components['schemas']['SeriesPreview']
 export type Series = components['schemas']['Series']
+export type WaitlistEntry = components['schemas']['WaitlistEntry']
+export type SlotRequest = components['schemas']['SlotRequest']
 
 const PAGE_SIZE = 10
 
@@ -47,14 +49,38 @@ export function useMyBookings(scope: BookingScope, page: number) {
   })
 }
 
-/** Anything that changes a booking changes both the timeline and My bookings. */
+/** Anything that changes a booking changes the timeline, My bookings and the waitlist. */
 function useRefreshBookings() {
   const client = useQueryClient()
   return () =>
     Promise.all([
       client.invalidateQueries({ queryKey: ['availability'] }),
       client.invalidateQueries({ queryKey: ['bookings'] }),
+      client.invalidateQueries({ queryKey: ['waitlist'] }),
     ])
+}
+
+export function useMyWaitlist() {
+  return useQuery({
+    queryKey: ['waitlist', 'mine'],
+    queryFn: ({ signal }) => request<WaitlistEntry[]>('GET', '/waitlist/mine', { signal }),
+  })
+}
+
+export function useJoinWaitlist() {
+  const refresh = useRefreshBookings()
+  return useMutation({
+    mutationFn: (slot: SlotRequest) => request<WaitlistEntry>('POST', '/waitlist', { body: slot }),
+    onSettled: refresh,
+  })
+}
+
+export function useLeaveWaitlist() {
+  const refresh = useRefreshBookings()
+  return useMutation({
+    mutationFn: (id: string) => request<undefined>('DELETE', `/waitlist/${id}`),
+    onSettled: refresh,
+  })
 }
 
 export function useCreateBooking() {

@@ -525,7 +525,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Wait for an exact slot that is taken (BR-24) */
+        /**
+         * Wait for an exact slot that is taken (BR-24)
+         * @description The slot must pass every booking rule except being free. If it frees up, the student gets a
+         *     confirmed booking for one person, with source `WAITLIST` (BR-26).
+         */
         post: operations["joinWaitlist"];
         delete?: never;
         options?: never;

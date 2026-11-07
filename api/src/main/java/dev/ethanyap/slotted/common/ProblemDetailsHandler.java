@@ -28,7 +28,9 @@ public class ProblemDetailsHandler {
 
   @ExceptionHandler(ApiException.class)
   ProblemDetail handleApi(ApiException e, HttpServletRequest request) {
-    return Problems.of(e.code(), e.getMessage(), request.getRequestURI());
+    var problem = Problems.of(e.code(), e.getMessage(), request.getRequestURI());
+    e.properties().forEach(problem::setProperty);
+    return problem;
   }
 
   @ExceptionHandler(MethodArgumentNotValidException.class)

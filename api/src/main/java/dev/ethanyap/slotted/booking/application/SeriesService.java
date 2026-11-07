@@ -3,7 +3,6 @@ package dev.ethanyap.slotted.booking.application;
 import dev.ethanyap.slotted.booking.domain.Booking;
 import dev.ethanyap.slotted.booking.domain.BookingPolicy;
 import dev.ethanyap.slotted.booking.domain.BookingRules;
-import dev.ethanyap.slotted.booking.domain.BookingRules.RoomFacts;
 import dev.ethanyap.slotted.booking.domain.BookingSeries;
 import dev.ethanyap.slotted.booking.domain.BookingSeries.Frequency;
 import dev.ethanyap.slotted.booking.infrastructure.BookingRepository;
@@ -18,7 +17,6 @@ import dev.ethanyap.slotted.user.domain.User;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
@@ -118,45 +116,6 @@ public class SeriesService {
     return new CreatedSeries(series, occurrencesOf(series, clock.instant(), staff), List.of());
   }
 
-  /**
-   * Cancels every occurrence from a date onwards (BR-23). The owner can only cancel what has not
-   * started; managers and admins follow their usual rule and must give a reason.
-   */
-  @Transactional
-  public CreatedSeries cancelFrom(UUID actorId, UUID seriesId, LocalDate fromDate, String reason) {
-    var series = visibleSeries(actorId, seriesId);
-    var owner = series.getUserId().equals(actorId);
-    var room = lookup.room(series.getRoomId());
-    var zone = ZoneId.of(lookup.facilityOf(room).getTimeZone());
-    var from = fromDate.atStartOfDay(zone).toInstant();
-    var now = clock.instant();
-
-    var toCancel =
-        bookings.findBySeriesIdOrderByStartAt(series.getId()).stream()
-            .filter(b -> !b.getStartAt().isBefore(from))
-            .filter(b -> b.effectiveStatus(now, policy).blocksRoom())
-            .filter(b -> !owner || b.getStartAt().isAfter(now))
-            .toList();
-    if (toCancel.isEmpty()) {
-      throw new ApiException(
-          ErrorCode.NOT_CANCELLABLE, "No bookings in this series can be cancelled from that date.");
-    }
-    for (var booking : toCancel) {
-      if (owner) {
-        booking.cancelByOwner(now, policy, reason);
-      } else {
-        booking.cancelByStaff(actorId, now, policy, reason);
-      }
-    }
-    var anyLeft =
-        bookings.findBySeriesIdOrderByStartAt(series.getId()).stream()
-            .anyMatch(b -> b.getStartAt().isAfter(now) && b.getStatus().isActive());
-    if (!anyLeft) {
-      series.markCancelled(now);
-    }
-    return new CreatedSeries(series, occurrencesOf(series, now, !owner), List.of());
-  }
-
   /** The rules about the series itself, which fail it as a whole (BR-20, BR-21). */
   private void checkSeriesAsAWhole(User user, NewSeries request, Facility facility, Instant now) {
     if (request.count() > policy.maxSeriesOccurrences()) {
@@ -197,19 +156,9 @@ public class SeriesService {
     for (var start : startTimes(request, facility)) {
       var end = start.plus(length);
       try {
-        var hours =
-            facility.getOpeningHours().stream()
-                .filter(p -> p.dayOfWeek() == start.atZone(zone).getDayOfWeek())
-                .findFirst();
         BookingRules.check(
             new BookingRules.Request(start, end, request.attendees()),
-            new RoomFacts(
-                room.isActive(),
-                room.getCapacity(),
-                room.getMaxBookingMinutes(),
-                zone,
-                hours,
-                lookup.blackoutReason(room, start, end)),
+            lookup.roomFacts(room, facility, start, end),
             facts.factsFor(user, start, end, 0, zone, now),
             now,
             policy.forSeries());
@@ -236,7 +185,7 @@ public class SeriesService {
     return starts;
   }
 
-  private BookingSeries visibleSeries(UUID actorId, UUID seriesId) {
+  BookingSeries visibleSeries(UUID actorId, UUID seriesId) {
     var series =
         seriesRepository
             .findById(seriesId)
@@ -248,7 +197,7 @@ public class SeriesService {
     return series;
   }
 
-  private List<BookingView> occurrencesOf(BookingSeries series, Instant now, boolean withNames) {
+  List<BookingView> occurrencesOf(BookingSeries series, Instant now, boolean withNames) {
     return lookup.viewsOf(bookings.findBySeriesIdOrderByStartAt(series.getId()), now, withNames);
   }
 

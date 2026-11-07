@@ -8,11 +8,27 @@ const CELL_MINUTES = 30
  * room's maximum length. The API checks all of this again; this just avoids offering bad choices.
  */
 export function endOptions(room: RoomAvailability, startIndex: number): string[] {
+  return optionsThrough(room, startIndex, ['FREE'])
+}
+
+/**
+ * End times a waitlist entry could have: like a booking, but through taken time too (BR-24). It
+ * stops at the student's own bookings, closed time and anything else that could never be booked.
+ */
+export function waitlistEndOptions(room: RoomAvailability, startIndex: number): string[] {
+  return optionsThrough(room, startIndex, ['FREE', 'BOOKED'])
+}
+
+function optionsThrough(
+  room: RoomAvailability,
+  startIndex: number,
+  states: RoomAvailability['cells'][number]['state'][],
+): string[] {
   const options: string[] = []
   const maxCells = room.maxBookingMinutes / CELL_MINUTES
   for (let i = startIndex; i < room.cells.length && options.length < maxCells; i++) {
     const cell = room.cells[i]
-    if (cell?.state !== 'FREE') {
+    if (!cell || !states.includes(cell.state)) {
       break
     }
     options.push(new Date(plusMinutes(cell.startAt, CELL_MINUTES)).toISOString())
