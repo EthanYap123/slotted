@@ -1,5 +1,7 @@
 package dev.ethanyap.slotted.booking.web;
 
+import dev.ethanyap.slotted.booking.application.BookingAttempts;
+import dev.ethanyap.slotted.booking.application.BookingCancellation;
 import dev.ethanyap.slotted.booking.application.SeriesService;
 import dev.ethanyap.slotted.booking.application.SeriesService.CreatedSeries;
 import dev.ethanyap.slotted.booking.application.SeriesService.NewSeries;
@@ -35,10 +37,18 @@ import org.springframework.web.bind.annotation.RestController;
 public class SeriesController {
 
   private final SeriesService series;
+  private final BookingAttempts attempts;
+  private final BookingCancellation cancellation;
   private final BookingPolicy policy;
 
-  public SeriesController(SeriesService series, BookingPolicy policy) {
+  public SeriesController(
+      SeriesService series,
+      BookingAttempts attempts,
+      BookingCancellation cancellation,
+      BookingPolicy policy) {
     this.series = series;
+    this.attempts = attempts;
+    this.cancellation = cancellation;
     this.policy = policy;
   }
 
@@ -54,7 +64,7 @@ public class SeriesController {
   @PostMapping
   public ResponseEntity<SeriesResponse> create(
       @AuthenticationPrincipal Jwt jwt, @Valid @RequestBody SeriesInput input) {
-    var created = series.create(Principals.userId(jwt), input.toNewSeries());
+    var created = attempts.createSeries(Principals.userId(jwt), input.toNewSeries());
     return ResponseEntity.created(URI.create("/api/v1/booking-series/" + created.series().getId()))
         .body(SeriesResponse.from(created, policy));
   }
@@ -70,7 +80,8 @@ public class SeriesController {
       @PathVariable UUID seriesId,
       @Valid @RequestBody CancelSeriesRequest request) {
     return SeriesResponse.from(
-        series.cancelFrom(Principals.userId(jwt), seriesId, request.fromDate(), request.reason()),
+        cancellation.cancelSeriesFrom(
+            Principals.userId(jwt), seriesId, request.fromDate(), request.reason()),
         policy);
   }
 

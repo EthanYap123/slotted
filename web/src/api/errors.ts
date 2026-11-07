@@ -9,6 +9,8 @@ export class ApiError extends Error {
   readonly code: ErrorCode | 'NETWORK'
   readonly requestId: string | undefined
   readonly fieldErrors: Readonly<Record<string, string>>
+  /** For `SLOT_TAKEN`, whether the caller may join the waitlist instead. */
+  readonly waitlistable: boolean
 
   constructor(
     status: number,
@@ -19,6 +21,7 @@ export class ApiError extends Error {
     this.status = status
     this.code = problem.code
     this.requestId = problem.requestId
+    this.waitlistable = problem.waitlistable === true
     this.fieldErrors = Object.fromEntries(
       (problem.errors ?? []).map((error) => [error.field, error.message]),
     )

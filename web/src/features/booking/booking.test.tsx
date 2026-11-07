@@ -96,10 +96,9 @@ describe('the timeline', () => {
       'aria-disabled',
       'true',
     )
-    expect(screen.getByRole('button', { name: 'Room A, 13:00, booked' })).toHaveAttribute(
-      'aria-disabled',
-      'true',
-    )
+    expect(
+      screen.getByRole('button', { name: 'Room A, 13:00, booked, join the waitlist' }),
+    ).toHaveAttribute('aria-disabled', 'false')
     expect(screen.getByRole('button', { name: 'Room A, 13:30, your booking' })).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: 'Room A, 14:00, closed for a blackout' }),
@@ -133,12 +132,14 @@ describe('the timeline', () => {
     expect(screen.getByRole('button', { name: 'Room A, 10:00, in the past' })).toHaveFocus()
   })
 
-  it('does not open the dialog for cells that are not free', async () => {
+  it('does not open a dialog for cells that cannot be booked or waited for', async () => {
     fakeApi({ 'GET /facilities': { body: FACILITIES }, [AVAILABILITY]: availability() })
     const user = userEvent.setup()
     renderApp('/')
 
-    await user.click(await screen.findByRole('button', { name: 'Room A, 13:00, booked' }))
+    await user.click(await screen.findByRole('button', { name: 'Room A, 10:00, in the past' }))
+    await user.click(screen.getByRole('button', { name: 'Room A, 13:30, your booking' }))
+    await user.click(screen.getByRole('button', { name: 'Room A, 14:00, closed for a blackout' }))
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
@@ -414,6 +415,7 @@ describe('my bookings', () => {
 
   it('lists upcoming bookings and switches to past ones', async () => {
     fakeApi({
+      'GET /waitlist/mine': { body: [] },
       [UPCOMING]: page([booking()]),
       [PAST]: page([
         booking({ id: 'b2', roomName: 'Room B', status: 'NO_SHOW' }),
@@ -442,7 +444,10 @@ describe('my bookings', () => {
   })
 
   it('invites people with no bookings to make one', async () => {
-    fakeApi({ [UPCOMING]: page([]) })
+    fakeApi({
+      'GET /waitlist/mine': { body: [] },
+      [UPCOMING]: page([]),
+    })
     renderApp('/bookings')
 
     expect(await screen.findByRole('link', { name: 'Book a room' })).toHaveAttribute('href', '/')
@@ -450,6 +455,7 @@ describe('my bookings', () => {
 
   it('does not offer to cancel a booking that has started', async () => {
     fakeApi({
+      'GET /waitlist/mine': { body: [] },
       [UPCOMING]: page([booking({ startAt: `${TODAY}T10:00:00+08:00` })]),
     })
     renderApp('/bookings')
@@ -460,6 +466,7 @@ describe('my bookings', () => {
 
   async function openCancel(item: Booking, cancelReply: Parameters<typeof fakeApi>[0][string]) {
     const api = fakeApi({
+      'GET /waitlist/mine': { body: [] },
       [UPCOMING]: page([item]),
       'POST /bookings/b1/cancel': cancelReply,
     })
@@ -483,7 +490,7 @@ describe('my bookings', () => {
       reason: 'Plans changed',
     })
     await waitFor(() => {
-      expect(api.calls.filter((call) => call.path.includes('/mine'))).toHaveLength(2)
+      expect(api.calls.filter((call) => call.path.includes('/bookings/mine'))).toHaveLength(2)
     })
   })
 
@@ -514,6 +521,7 @@ describe('my bookings', () => {
 
   it('cancels a repeating booking from a date onwards', async () => {
     const api = fakeApi({
+      'GET /waitlist/mine': { body: [] },
       [UPCOMING]: page([booking({ seriesId: 's1' })]),
       'POST /booking-series/s1/cancel': { body: {} },
     })
@@ -530,7 +538,10 @@ describe('my bookings', () => {
   })
 
   it('does not offer series cancelling for a single booking', async () => {
-    fakeApi({ [UPCOMING]: page([booking()]) })
+    fakeApi({
+      'GET /waitlist/mine': { body: [] },
+      [UPCOMING]: page([booking()]),
+    })
     renderApp('/bookings')
 
     await screen.findByRole('heading', { name: 'Room A' })
@@ -539,6 +550,7 @@ describe('my bookings', () => {
 
   it('pages through long lists', async () => {
     const api = fakeApi({
+      'GET /waitlist/mine': { body: [] },
       [UPCOMING]: page([booking()], 0, 2),
       'GET /bookings/mine?scope=upcoming&page=1&size=10': page([booking({ id: 'b9' })], 1, 2),
     })

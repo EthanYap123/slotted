@@ -40,6 +40,7 @@ public class ScheduleService {
   private final BookingRepository bookings;
   private final BookingLookup lookup;
   private final FacilityService facilities;
+  private final WaitlistQueue queue;
   private final BookingPolicy policy;
   private final Clock clock;
 
@@ -48,12 +49,14 @@ public class ScheduleService {
       BookingRepository bookings,
       BookingLookup lookup,
       FacilityService facilities,
+      WaitlistQueue queue,
       BookingPolicy policy,
       Clock clock) {
     this.blackouts = blackouts;
     this.bookings = bookings;
     this.lookup = lookup;
     this.facilities = facilities;
+    this.queue = queue;
     this.policy = policy;
     this.clock = clock;
   }
@@ -70,14 +73,20 @@ public class ScheduleService {
     var affected =
         counting(rooms, now, FAR_FUTURE, now).stream()
             .filter(b -> b.getStartAt().isAfter(now))
-            .filter(b -> !fits(b, periods, zone))
+            .filter(b -> !fits(b.getStartAt(), b.getEndAt(), periods, zone))
             .toList();
     var views = lookup.viewsOf(affected, now, true);
+    var entries =
+        queue.waitingIn(rooms, now).stream()
+            .filter(e -> !fits(e.getStartAt(), e.getEndAt(), periods, zone))
+            .toList();
     if (!dryRun) {
       affected.forEach(b -> b.cancelByStaff(actorId, now, policy, HOURS_CHANGED));
+      entries.forEach(e -> e.markExpired(now));
       facility.replaceOpeningHours(periods);
+      rooms.forEach(room -> queue.promoteIn(room, now));
     }
-    return new Impact(!dryRun, views);
+    return new Impact(!dryRun, views, entries.size());
   }
 
   /** The result of a dry run, or the blackout that was created. */
@@ -112,11 +121,16 @@ public class ScheduleService {
             .filter(b -> b.effectiveStatus(now, policy).blocksRoom())
             .toList();
     var views = lookup.viewsOf(affected, now, true);
+    var entries = queue.waitingBetween(inScope, request.startAt(), request.endAt(), now);
     if (dryRun) {
-      return new BlackoutOutcome(null, new Impact(false, views));
+      return new BlackoutOutcome(null, new Impact(false, views, entries.size()));
     }
     affected.forEach(b -> b.cancelByStaff(actorId, now, policy, blackout.getReason()));
-    return new BlackoutOutcome(blackouts.save(blackout), new Impact(true, views));
+    entries.forEach(e -> e.markExpired(now));
+    var created = blackouts.saveAndFlush(blackout);
+    // A cancelled booking can reach past the blackout, freeing time someone else is waiting for.
+    inScope.forEach(room -> queue.promoteIn(room, now));
+    return new BlackoutOutcome(created, new Impact(true, views, entries.size()));
   }
 
   /** Blackouts overlapping a period; either end may be left open. */
@@ -154,9 +168,10 @@ public class ScheduleService {
         rooms.stream().map(Room::getId).toList(), from, to, now.minus(policy.noShowGrace()));
   }
 
-  private static boolean fits(Booking booking, Collection<OpeningPeriod> periods, ZoneId zone) {
-    var start = booking.getStartAt().atZone(zone);
-    var end = booking.getEndAt().atZone(zone);
+  private static boolean fits(
+      Instant startAt, Instant endAt, Collection<OpeningPeriod> periods, ZoneId zone) {
+    var start = startAt.atZone(zone);
+    var end = endAt.atZone(zone);
     var hours = periods.stream().filter(p -> p.dayOfWeek() == start.getDayOfWeek()).findFirst();
     return BookingRules.withinOpeningHours(start, end, hours);
   }
@@ -164,6 +179,7 @@ public class ScheduleService {
   /** A blackout to create; {@code roomId} is null for the whole facility. */
   public record NewBlackout(UUID roomId, Instant startAt, Instant endAt, String reason) {}
 
-  /** What a change does: whether it was applied, and the bookings it cancels. */
-  public record Impact(boolean applied, List<BookingView> affectedBookings) {}
+  /** What a change does: whether it was applied, and the bookings and entries it ends. */
+  public record Impact(
+      boolean applied, List<BookingView> affectedBookings, int affectedWaitlistEntries) {}
 }

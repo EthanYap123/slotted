@@ -45,14 +45,16 @@ export function TimelineLegend() {
 /**
  * Rooms as rows of 30-minute cells. A grid with one tab stop: Tab enters it, arrow keys move between
  * cells, Enter or Space picks a free cell. Scrolls inside its own box, so a phone's page never
- * scrolls sideways.
+ * scrolls sideways. With {@code onPickTaken}, booked cells can be picked too, to wait for them.
  */
 export function Timeline({
   rooms,
   onPick,
+  onPickTaken,
 }: {
   rooms: RoomAvailability[]
   onPick: (room: RoomAvailability, cellIndex: number) => void
+  onPickTaken?: (room: RoomAvailability, cellIndex: number) => void
 }) {
   const tableRef = useRef<HTMLTableElement>(null)
   const [moved, setMoved] = useState<{ row: number; column: number } | null>(null)
@@ -115,6 +117,7 @@ export function Timeline({
               </th>
               {room.cells.map((cell, column) => {
                 const free = cell.state === 'FREE'
+                const canWait = cell.state === 'BOOKED' && onPickTaken !== undefined
                 const isCurrent = current.row === row && current.column === column
                 return (
                   <td key={cell.startAt}>
@@ -123,14 +126,16 @@ export function Timeline({
                       data-cell={`${String(row)}-${String(column)}`}
                       className={`cell cell-${cell.state.toLowerCase()}`}
                       tabIndex={isCurrent ? 0 : -1}
-                      aria-disabled={!free}
-                      aria-label={`${room.roomName}, ${formatTime(cell.startAt)}, ${STATE_LABEL[cell.state]}`}
+                      aria-disabled={!free && !canWait}
+                      aria-label={`${room.roomName}, ${formatTime(cell.startAt)}, ${STATE_LABEL[cell.state]}${canWait ? ', join the waitlist' : ''}`}
                       onFocus={() => {
                         setMoved({ row, column })
                       }}
                       onClick={() => {
                         if (free) {
                           onPick(room, column)
+                        } else if (canWait) {
+                          onPickTaken(room, column)
                         }
                       }}
                     >

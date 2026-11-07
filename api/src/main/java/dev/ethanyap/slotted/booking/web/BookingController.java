@@ -1,6 +1,7 @@
 package dev.ethanyap.slotted.booking.web;
 
 import dev.ethanyap.slotted.booking.application.BookingAttempts;
+import dev.ethanyap.slotted.booking.application.BookingCancellation;
 import dev.ethanyap.slotted.booking.application.BookingService;
 import dev.ethanyap.slotted.booking.application.BookingService.BookingQuery;
 import dev.ethanyap.slotted.booking.application.BookingService.NewBooking;
@@ -38,12 +39,17 @@ public class BookingController {
 
   private final BookingService bookings;
   private final BookingAttempts attempts;
+  private final BookingCancellation cancellation;
   private final BookingPolicy policy;
 
   public BookingController(
-      BookingService bookings, BookingAttempts attempts, BookingPolicy policy) {
+      BookingService bookings,
+      BookingAttempts attempts,
+      BookingCancellation cancellation,
+      BookingPolicy policy) {
     this.bookings = bookings;
     this.attempts = attempts;
+    this.cancellation = cancellation;
     this.policy = policy;
   }
 
@@ -117,7 +123,8 @@ public class BookingController {
       @PathVariable UUID bookingId,
       @Valid @RequestBody(required = false) CancelRequest request) {
     var reason = request == null ? null : request.reason();
-    return BookingResponse.from(bookings.cancel(Principals.userId(jwt), bookingId, reason), policy);
+    return BookingResponse.from(
+        cancellation.cancel(Principals.userId(jwt), bookingId, reason), policy);
   }
 
   /** Schema {@code BookingInput}. Times need an offset, for example {@code +08:00}. */

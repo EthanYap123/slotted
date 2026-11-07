@@ -4,6 +4,7 @@ import dev.ethanyap.slotted.booking.domain.BookingPolicy;
 import dev.ethanyap.slotted.booking.domain.BookingRules.BookerFacts;
 import dev.ethanyap.slotted.booking.domain.Suspension;
 import dev.ethanyap.slotted.booking.infrastructure.BookingRepository;
+import dev.ethanyap.slotted.booking.infrastructure.WaitlistRepository;
 import dev.ethanyap.slotted.user.domain.Role;
 import dev.ethanyap.slotted.user.domain.User;
 import java.time.Duration;
@@ -22,16 +23,25 @@ import org.springframework.stereotype.Component;
 class BookerFactsReader {
 
   private final BookingRepository bookings;
+  private final WaitlistRepository waitlist;
   private final BookingPolicy policy;
 
-  BookerFactsReader(BookingRepository bookings, BookingPolicy policy) {
+  BookerFactsReader(BookingRepository bookings, WaitlistRepository waitlist, BookingPolicy policy) {
     this.bookings = bookings;
+    this.waitlist = waitlist;
     this.policy = policy;
   }
 
   /** A series counts as one booking toward the upcoming limit (BR-21). */
   long upcomingBookings(UUID userId, Instant now) {
     return bookings.countUpcomingSingles(userId, now) + activeSeries(userId, now);
+  }
+
+  /** Whether someone told a slot was taken could wait for it instead (BR-24). */
+  boolean canWaitFor(User user, UUID roomId, Instant start, Instant end, Instant now) {
+    return user.getRole() == Role.STUDENT
+        && waitlist.countWaiting(user.getId(), now) < policy.maxWaiting()
+        && !waitlist.isWaitingFor(user.getId(), roomId, start, end, now);
   }
 
   long activeSeries(UUID userId, Instant now) {

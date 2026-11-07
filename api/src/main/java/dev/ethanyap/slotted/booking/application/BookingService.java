@@ -3,15 +3,12 @@ package dev.ethanyap.slotted.booking.application;
 import dev.ethanyap.slotted.booking.domain.Booking;
 import dev.ethanyap.slotted.booking.domain.BookingPolicy;
 import dev.ethanyap.slotted.booking.domain.BookingRules;
-import dev.ethanyap.slotted.booking.domain.BookingRules.RoomFacts;
 import dev.ethanyap.slotted.booking.domain.EffectiveStatus;
 import dev.ethanyap.slotted.booking.infrastructure.BookingFilters;
 import dev.ethanyap.slotted.booking.infrastructure.BookingRepository;
 import dev.ethanyap.slotted.common.ApiException;
 import dev.ethanyap.slotted.common.ErrorCode;
 import dev.ethanyap.slotted.facility.application.FacilityAccess;
-import dev.ethanyap.slotted.facility.domain.Facility;
-import dev.ethanyap.slotted.facility.domain.OpeningPeriod;
 import dev.ethanyap.slotted.user.application.ManagedFacilities;
 import dev.ethanyap.slotted.user.domain.Role;
 import java.sql.SQLException;
@@ -20,7 +17,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.util.Collection;
 import java.util.List;
-import java.util.Optional;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
@@ -80,13 +77,7 @@ public class BookingService {
     var zone = ZoneId.of(facility.getTimeZone());
     BookingRules.check(
         new BookingRules.Request(request.startAt(), request.endAt(), request.attendees()),
-        new RoomFacts(
-            room.isActive(),
-            room.getCapacity(),
-            room.getMaxBookingMinutes(),
-            zone,
-            openingHoursOn(facility, request.startAt(), zone),
-            lookup.blackoutReason(room, request.startAt(), request.endAt())),
+        lookup.roomFacts(room, facility, request.startAt(), request.endAt()),
         facts.factsFor(
             user,
             request.startAt(),
@@ -98,7 +89,8 @@ public class BookingService {
         policy);
 
     if (bookings.roomHasBookingBetween(room.getId(), request.startAt(), request.endAt(), cutoff)) {
-      throw slotTaken();
+      throw slotTaken(
+          facts.canWaitFor(user, room.getId(), request.startAt(), request.endAt(), now));
     }
     var booking =
         new Booking(
@@ -109,22 +101,6 @@ public class BookingService {
             request.attendees(),
             request.purpose());
     return lookup.view(insert(bookings, booking), room, facility, now, null);
-  }
-
-  /** The owner cancels before the start; managers and admins cancel any active booking. */
-  @Transactional
-  public BookingView cancel(UUID actorId, UUID bookingId, String reason) {
-    var booking = bookings.findById(bookingId).orElseThrow(BookingService::notFound);
-    var room = lookup.room(booking.getRoomId());
-    var now = clock.instant();
-    if (booking.getUserId().equals(actorId)) {
-      booking.cancelByOwner(now, policy, reason);
-    } else if (access.canManage(room.getFacilityId(), actorId)) {
-      booking.cancelByStaff(actorId, now, policy, reason);
-    } else {
-      throw notFound();
-    }
-    return lookup.view(booking, room, lookup.facilityOf(room), now, null);
   }
 
   /** A booking the caller made, or one in a facility they manage. */
@@ -195,11 +171,6 @@ public class BookingService {
     return lookup.views(bookings.findAll(filter, pageable), now, true);
   }
 
-  private Optional<OpeningPeriod> openingHoursOn(Facility facility, Instant at, ZoneId zone) {
-    var day = at.atZone(zone).getDayOfWeek();
-    return facility.getOpeningHours().stream().filter(p -> p.dayOfWeek() == day).findFirst();
-  }
-
   private Instant noShowCutoff(Instant now) {
     return now.minus(policy.noShowGrace());
   }
@@ -231,6 +202,14 @@ public class BookingService {
   static ApiException slotTaken() {
     return new ApiException(
         ErrorCode.SLOT_TAKEN, "Someone else has booked this room for some or all of that time.");
+  }
+
+  /** {@code SLOT_TAKEN}, saying whether the caller could join the waitlist instead (BR-24). */
+  private static ApiException slotTaken(boolean waitlistable) {
+    return new ApiException(
+        ErrorCode.SLOT_TAKEN,
+        "Someone else has booked this room for some or all of that time.",
+        Map.of("waitlistable", waitlistable));
   }
 
   private static ApiException notFound() {

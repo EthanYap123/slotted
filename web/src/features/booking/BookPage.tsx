@@ -7,11 +7,15 @@ import { BookingDialog } from './BookingDialog'
 import {
   useAvailability,
   useFacilities,
+  useJoinWaitlist,
   type Booking,
   type RoomAvailability,
   type Series,
+  type SlotRequest,
+  type WaitlistEntry,
 } from './bookingApi'
 import { Timeline, TimelineLegend } from './Timeline'
+import { WaitlistDialog } from './WaitlistDialog'
 
 /** How far ahead the picker goes; the API enforces the real limit (BR-3). */
 const BOOKING_WINDOW_DAYS = 14
@@ -19,13 +23,18 @@ const BOOKING_WINDOW_DAYS = 14
 type Notice =
   | { kind: 'booked'; booking: Booking }
   | { kind: 'series'; series: Series }
-  | { kind: 'taken'; message: string }
+  | { kind: 'taken'; message: string; slot: SlotRequest | null }
+  | { kind: 'waiting'; entry: WaitlistEntry }
 
 export function BookPage() {
   const [params, setParams] = useSearchParams()
   const facilities = useFacilities()
   const current = useSession()
   const [picked, setPicked] = useState<{ room: RoomAvailability; cellIndex: number } | null>(null)
+  const [waitingFor, setWaitingFor] = useState<{
+    room: RoomAvailability
+    cellIndex: number
+  } | null>(null)
   const [notice, setNotice] = useState<Notice | null>(null)
 
   const today = todayInSingapore()
@@ -47,6 +56,7 @@ export function BookPage() {
   }
 
   const suspendedUntil = current.user?.suspendedUntil
+  const isStudent = current.user?.role === 'STUDENT'
 
   return (
     <>
@@ -80,8 +90,20 @@ export function BookPage() {
         </div>
       )}
       {notice?.kind === 'taken' && (
-        <p className="notice notice-error" role="alert">
-          {notice.message} The timeline has been updated.
+        <TakenNotice
+          message={notice.message}
+          slot={notice.slot}
+          onJoined={(entry) => {
+            setNotice({ kind: 'waiting', entry })
+          }}
+        />
+      )}
+      {notice?.kind === 'waiting' && (
+        <p className="notice notice-ok" role="status">
+          You are number {notice.entry.position} in the queue for {notice.entry.roomName},{' '}
+          {formatDate(notice.entry.startAt)}, {formatTime(notice.entry.startAt)} to{' '}
+          {formatTime(notice.entry.endAt)}. If it frees up, the booking is yours automatically.{' '}
+          <Link to="/bookings">See my bookings</Link>
         </p>
       )}
 
@@ -169,6 +191,7 @@ export function BookPage() {
           {availability.data?.opensAt != null && availability.data.rooms.length > 0 && (
             <>
               <TimelineLegend />
+              {isStudent && <p className="page-note">Select a booked time to join its waitlist.</p>}
               <Timeline
                 key={`${String(facilityId)}-${date}`}
                 rooms={availability.data.rooms}
@@ -176,6 +199,12 @@ export function BookPage() {
                   setNotice(null)
                   setPicked({ room, cellIndex })
                 }}
+                {...(isStudent && {
+                  onPickTaken: (room: RoomAvailability, cellIndex: number) => {
+                    setNotice(null)
+                    setWaitingFor({ room, cellIndex })
+                  },
+                })}
               />
             </>
           )}
@@ -197,12 +226,56 @@ export function BookPage() {
             setPicked(null)
             setNotice({ kind: 'series', series })
           }}
-          onSlotTaken={(message) => {
+          onSlotTaken={(message, slot) => {
             setPicked(null)
-            setNotice({ kind: 'taken', message })
+            setNotice({ kind: 'taken', message, slot })
+          }}
+        />
+      )}
+
+      {waitingFor && (
+        <WaitlistDialog
+          room={waitingFor.room}
+          startIndex={waitingFor.cellIndex}
+          onClose={() => {
+            setWaitingFor(null)
+          }}
+          onJoined={(entry) => {
+            setWaitingFor(null)
+            setNotice({ kind: 'waiting', entry })
           }}
         />
       )}
     </>
+  )
+}
+
+/** The slot was just taken: says so, and offers to wait for it when that is allowed (ST-3). */
+function TakenNotice({
+  message,
+  slot,
+  onJoined,
+}: {
+  message: string
+  slot: SlotRequest | null
+  onJoined: (entry: WaitlistEntry) => void
+}) {
+  const join = useJoinWaitlist()
+  return (
+    <div className="notice notice-error" role="alert">
+      <p>{join.error ? errorMessage(join.error) : `${message} The timeline has been updated.`}</p>
+      {slot && !join.error && (
+        <button
+          type="button"
+          className="button"
+          disabled={join.isPending}
+          onClick={() => {
+            join.mutate(slot, { onSuccess: onJoined })
+          }}
+        >
+          {join.isPending ? 'Joining…' : 'Join the waitlist'}
+        </button>
+      )}
+    </div>
   )
 }
