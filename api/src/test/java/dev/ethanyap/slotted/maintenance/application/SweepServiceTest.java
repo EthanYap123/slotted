@@ -25,7 +25,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 /** The sweep's key and its minimum interval, without a database. */
 class SweepServiceTest {
 
-  private static final String KEY = "a-maintenance-key-that-is-long-enough-1234";
+  /** Built at runtime: a made-up key, kept unlike a real one so secret scanners stay quiet. */
+  private static final String KEY = "k".repeat(40);
+
   private static final Instant NOW = Instant.parse("2026-11-08T03:17:00Z");
 
   private final JdbcTemplate jdbc = mock(JdbcTemplate.class);
