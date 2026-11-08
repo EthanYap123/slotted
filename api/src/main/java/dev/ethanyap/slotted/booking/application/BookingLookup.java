@@ -72,6 +72,11 @@ class BookingLookup {
     return users.tryLockById(userId).filter(User::isActive);
   }
 
+  /** The room whose current QR code holds this token. */
+  Optional<Room> roomByCheckInToken(String token) {
+    return rooms.findByCheckInToken(token);
+  }
+
   Room room(UUID roomId) {
     return rooms
         .findById(roomId)

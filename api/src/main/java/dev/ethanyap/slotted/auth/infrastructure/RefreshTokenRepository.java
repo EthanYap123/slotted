@@ -16,6 +16,16 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   Optional<RefreshToken> findByTokenHash(String tokenHash);
 
+  /**
+   * Deletes tokens that expired before {@code cutoff}; returns how many. A token another one still
+   * points to as its replacement is kept until that one goes too, so the reference stays valid.
+   */
+  @Modifying
+  @Query(
+      "delete from RefreshToken t where t.expiresAt < :cutoff and not exists"
+          + " (select 1 from RefreshToken r where r.replacedById = t.id and r.expiresAt >= :cutoff)")
+  int deleteExpiredBefore(Instant cutoff);
+
   @Modifying
   @Query(
       "update RefreshToken t set t.revokedAt = :now"

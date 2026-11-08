@@ -4,6 +4,7 @@ import { LoginPage } from './features/auth/LoginPage'
 import { RegisterPage } from './features/auth/RegisterPage'
 import { RequireAuth } from './features/auth/RequireAuth'
 import { BookPage } from './features/booking/BookPage'
+import { CheckInPage } from './features/booking/CheckInPage'
 import { MyBookingsPage } from './features/booking/MyBookingsPage'
 
 function NotFoundPage() {
@@ -26,6 +27,7 @@ export default function App() {
         <Route element={<RequireAuth />}>
           <Route index element={<BookPage />} />
           <Route path="bookings" element={<MyBookingsPage />} />
+          <Route path="check-in" element={<CheckInPage />} />
         </Route>
         <Route path="*" element={<NotFoundPage />} />
       </Route>

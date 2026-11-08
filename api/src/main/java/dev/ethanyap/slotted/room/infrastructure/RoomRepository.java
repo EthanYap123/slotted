@@ -28,6 +28,12 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
   @Query("select r from Room r where r.id = :id")
   Optional<Room> lockById(UUID id);
 
+  Optional<Room> findByCheckInToken(String checkInToken);
+
+  /** Every room's ID, in a fixed order. */
+  @Query("select r.id from Room r order by r.id")
+  List<UUID> findAllIds();
+
   /** Locks a facility's rooms in ID order, so two callers cannot lock them in opposite orders. */
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query("select r from Room r where r.facilityId = :facilityId order by r.id")

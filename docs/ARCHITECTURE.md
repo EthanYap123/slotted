@@ -236,6 +236,8 @@ flowchart LR
     outbox -- "after commit, and retried by sweep" --> brevo
 ```
 
+The workflow is `.github/workflows/sweep.yml`. It needs the `API_URL` repository variable and the `MAINTENANCE_KEY` secret, set when the API is deployed in Phase 4; until then each run finds them missing and does nothing.
+
 If the sweep is late or never runs, every answer the API gives is still correct; only no-show emails and database bookkeeping wait. Full reasoning and the failure table are in [ADR-0004](adr/0004-lazy-evaluation-of-time-based-rules.md).
 
 ## 8. Environments and delivery

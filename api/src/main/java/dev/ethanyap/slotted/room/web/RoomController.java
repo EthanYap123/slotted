@@ -15,6 +15,8 @@ import jakarta.validation.constraints.Size;
 import java.net.URI;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.http.CacheControl;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -77,6 +79,23 @@ public class RoomController {
     var changes =
         new RoomDetails(patch.name(), patch.type(), patch.capacity(), patch.maxBookingMinutes());
     return RoomResponse.from(rooms.update(roomId, IfMatch.parse(ifMatch), changes, patch.active()));
+  }
+
+  /** A printable QR code; only the room's managers may see it, as it holds the secret token. */
+  @GetMapping(value = "/api/v1/rooms/{roomId}/check-in-qr", produces = "image/svg+xml")
+  @PreAuthorize("@facilityAccess.canManage(@roomService.facilityOf(#roomId), authentication)")
+  public ResponseEntity<String> checkInQr(@PathVariable UUID roomId) {
+    return ResponseEntity.ok()
+        .contentType(MediaType.valueOf("image/svg+xml"))
+        .cacheControl(CacheControl.noStore())
+        .body(rooms.checkInQr(roomId));
+  }
+
+  @PostMapping("/api/v1/rooms/{roomId}/check-in-token/rotate")
+  @PreAuthorize("@facilityAccess.canManage(@roomService.facilityOf(#roomId), authentication)")
+  public ResponseEntity<Void> rotateCheckInToken(@PathVariable UUID roomId) {
+    rooms.rotateCheckInToken(roomId);
+    return ResponseEntity.noContent().build();
   }
 
   /** Schema {@code Room}. The check-in token is never included. */

@@ -67,6 +67,11 @@ public class Room {
     this.checkInToken = checkInToken;
   }
 
+  /** A new secret for the room's QR code; the old one stops working (MG-5). */
+  public void replaceCheckInToken(String token) {
+    this.checkInToken = token;
+  }
+
   public void rename(String name) {
     if (name == null || name.isBlank()) {
       throw invalid("A room needs a name.");

@@ -6,6 +6,7 @@ import dev.ethanyap.slotted.common.IfMatch;
 import dev.ethanyap.slotted.facility.infrastructure.FacilityRepository;
 import dev.ethanyap.slotted.room.domain.Room;
 import dev.ethanyap.slotted.room.domain.RoomType;
+import dev.ethanyap.slotted.room.infrastructure.CheckInProperties;
 import dev.ethanyap.slotted.room.infrastructure.RoomRepository;
 import java.security.SecureRandom;
 import java.util.Base64;
@@ -23,9 +24,12 @@ public class RoomService {
 
   private final RoomRepository rooms;
   private final FacilityRepository facilities;
+  private final CheckInProperties checkIn;
   private final SecureRandom random = new SecureRandom();
 
-  public RoomService(RoomRepository rooms, FacilityRepository facilities) {
+  public RoomService(
+      RoomRepository rooms, FacilityRepository facilities, CheckInProperties checkIn) {
+    this.checkIn = checkIn;
     this.rooms = rooms;
     this.facilities = facilities;
   }
@@ -95,6 +99,24 @@ public class RoomService {
       room.setActive(active);
     }
     return saveUniquely(room);
+  }
+
+  /**
+   * A printable QR code for the room (MG-5). It opens the web app's check-in page with the room's
+   * current token.
+   */
+  @Transactional(readOnly = true)
+  public String checkInQr(UUID roomId) {
+    var room = get(roomId);
+    var base = checkIn.webUrl().replaceAll("/+$", "");
+    var link = base + "/check-in?token=" + room.getCheckInToken();
+    return QrCodes.svg(link, room.getName());
+  }
+
+  /** Issues a new token, so printed copies of the old QR code stop working at once (MG-5). */
+  @Transactional
+  public void rotateCheckInToken(UUID roomId) {
+    get(roomId).replaceCheckInToken(newCheckInToken());
   }
 
   private void requireFacility(UUID facilityId) {
