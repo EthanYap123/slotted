@@ -12,6 +12,8 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
@@ -23,6 +25,9 @@ import org.hibernate.annotations.UpdateTimestamp;
 @Entity
 @Table(name = "booking")
 public class Booking {
+
+  /** Bookings start and end on these boundaries (BR-1). */
+  private static final int BOUNDARY_MINUTES = 30;
 
   /** A waitlist request names only a slot, so promoted bookings are for one person. */
   public static final int PROMOTED_ATTENDEES = 1;
@@ -129,7 +134,8 @@ public class Booking {
     if (!now.isBefore(startAt)) {
       throw new ApiException(
           ErrorCode.ALREADY_STARTED,
-          "This booking has already started, so it can no longer be cancelled.");
+          "This booking has already started, so it can no longer be cancelled."
+              + " If you have checked in, you can end it early instead.");
     }
     lateCancellation = Duration.between(now, startAt).compareTo(policy.lateCancellation()) < 0;
     markCancelled(now, userId, reason);
@@ -149,6 +155,71 @@ public class Booking {
           ErrorCode.REASON_REQUIRED, "Give a reason; it is sent to the person who booked.");
     }
     markCancelled(now, staffId, reason);
+  }
+
+  /** Whether {@code now} is inside the check-in window of a confirmed booking (BR-16). */
+  public boolean isCheckInOpen(Instant now, BookingPolicy policy) {
+    return status == BookingStatus.CONFIRMED
+        && !now.isBefore(checkInOpensAt(policy))
+        && now.isBefore(noShowAt(policy));
+  }
+
+  /**
+   * Checks in (BR-16). From the no-show time on, the booking has been released, so this fails even
+   * if nothing has written the no-show down yet (ADR-0004). Checking in again does nothing.
+   */
+  public void checkIn(Instant now, BookingPolicy policy) {
+    if (status == BookingStatus.CHECKED_IN) {
+      return;
+    }
+    if (status != BookingStatus.CONFIRMED) {
+      throw new ApiException(
+          ErrorCode.NO_BOOKING_TO_CHECK_IN, "This booking cannot be checked in.");
+    }
+    if (now.isBefore(checkInOpensAt(policy))) {
+      throw new ApiException(ErrorCode.CHECK_IN_NOT_OPEN, "Check-in is not open yet.");
+    }
+    if (!now.isBefore(noShowAt(policy))) {
+      throw new ApiException(
+          ErrorCode.CHECK_IN_CLOSED, "Check-in has closed, so this booking was released.");
+    }
+    status = BookingStatus.CHECKED_IN;
+    // The database keeps microseconds; storing exactly that keeps every read the same.
+    checkedInAt = now.truncatedTo(ChronoUnit.MICROS);
+  }
+
+  /**
+   * Ends a checked-in booking early (BR-15): the rest is released from the next 30-minute boundary
+   * in the facility's zone. A booking always keeps its first 30 minutes, so one ended before it
+   * starts (check-in opens 10 minutes early) does not end before its own start.
+   */
+  public void endEarly(Instant now, BookingPolicy policy, ZoneId zone) {
+    if (effectiveStatus(now, policy) != EffectiveStatus.CHECKED_IN) {
+      throw new ApiException(
+          ErrorCode.NOT_CHECKED_IN,
+          "Only a booking you have checked in to, and that has not ended, can be ended early.");
+    }
+    if (releasedAt != null) {
+      throw new ApiException(ErrorCode.NOT_CHECKED_IN, "This booking has already been ended.");
+    }
+    var boundary = nextBoundary(now, zone);
+    var earliest = startAt.plus(Duration.ofMinutes(BOUNDARY_MINUTES));
+    var newEnd = boundary.isBefore(earliest) ? earliest : boundary;
+    if (newEnd.isBefore(endAt)) {
+      endAt = newEnd;
+    }
+    releasedAt = now.truncatedTo(ChronoUnit.MICROS);
+  }
+
+  /** {@code now} if it is on a 30-minute boundary, otherwise the next one. */
+  private static Instant nextBoundary(Instant now, ZoneId zone) {
+    var local = now.atZone(zone).truncatedTo(ChronoUnit.MINUTES);
+    var minutes = local.getMinute() % BOUNDARY_MINUTES;
+    var onBoundary = minutes == 0 && local.toInstant().equals(now);
+    if (onBoundary) {
+      return now;
+    }
+    return local.minusMinutes(minutes).plusMinutes(BOUNDARY_MINUTES).toInstant();
   }
 
   /** The system cancels an active booking, for example when the account is disabled. */

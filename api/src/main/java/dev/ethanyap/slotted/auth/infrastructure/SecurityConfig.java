@@ -48,6 +48,9 @@ public class SecurityConfig {
                         "/api/v1/auth/refresh",
                         "/api/v1/auth/logout")
                     .permitAll()
+                    // Checked against MAINTENANCE_KEY by the endpoint itself.
+                    .requestMatchers(HttpMethod.POST, "/api/v1/internal/maintenance/sweep")
+                    .permitAll()
                     .requestMatchers("/api/v1/admin/**")
                     .hasRole("ADMIN")
                     .requestMatchers("/error")

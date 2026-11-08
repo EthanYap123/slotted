@@ -411,7 +411,13 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** End a checked-in booking early and release the rest (BR-15) */
+        /**
+         * End a checked-in booking early and release the rest (BR-15)
+         * @description Only the owner, once, while the booking is checked in and has not ended. The rest is released
+         *     from the next 30-minute boundary, but a booking always keeps its first 30 minutes, so one ended
+         *     before it starts does not end before its own start. The freed time is offered to the waitlist in
+         *     the same transaction (BR-26).
+         */
         post: operations["endBookingEarly"];
         delete?: never;
         options?: never;
@@ -430,7 +436,10 @@ export interface paths {
         put?: never;
         /**
          * Check in to the caller's current booking in the room identified by a QR token
-         * @description Succeeds only inside the check-in window (BR-16).
+         * @description Succeeds only inside the check-in window (BR-16). Checking in again is harmless and returns the
+         *     same booking. Otherwise `CHECK_IN_NOT_OPEN` says when it opens, `CHECK_IN_CLOSED` that the booking
+         *     was released, `NO_BOOKING_TO_CHECK_IN` that the caller has nothing in this room now, and
+         *     `QR_TOKEN_INVALID` that the code is unknown or was rotated.
          */
         post: operations["checkIn"];
         delete?: never;
@@ -662,7 +671,8 @@ export interface paths {
         /**
          * Settle overdue no-shows, expire waitlist entries and send queued email (ADR-0004)
          * @description Called by a scheduled GitHub Actions workflow. Idempotent; overlapping calls skip
-         *     (`ranSweep: false`). Not authenticated with a JWT.
+         *     (`ranSweep: false`), and calls less than a minute apart get `429`. Not authenticated with a JWT;
+         *     with no `MAINTENANCE_KEY` set, every call gets `401`. Email counts stay 0 until email is added.
          */
         post: operations["runMaintenanceSweep"];
         delete?: never;

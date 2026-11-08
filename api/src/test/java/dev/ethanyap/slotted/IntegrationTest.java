@@ -21,7 +21,9 @@ import org.testcontainers.junit.jupiter.Testcontainers;
       "slotted.auth.jwt-secret=integration-test-signing-key-not-a-real-secret",
       "slotted.cors.allowed-origins=http://localhost:5173",
       "slotted.bootstrap-admin.email=" + IntegrationTest.ADMIN_EMAIL,
-      "slotted.bootstrap-admin.password=" + IntegrationTest.ADMIN_PASSWORD
+      "slotted.bootstrap-admin.password=" + IntegrationTest.ADMIN_PASSWORD,
+      "slotted.maintenance.key=" + IntegrationTest.MAINTENANCE_KEY,
+      "slotted.maintenance.min-interval=0s"
     })
 @Import(TestcontainersConfiguration.class)
 @Testcontainers(disabledWithoutDocker = true)
@@ -31,4 +33,7 @@ public @interface IntegrationTest {
   String ADMIN_EMAIL = "first.admin@example.com";
 
   String ADMIN_PASSWORD = "integration test admin password";
+
+  /** The key the maintenance sweep accepts in every integration test run. */
+  String MAINTENANCE_KEY = "integration-test-maintenance-key-not-a-real-secret";
 }

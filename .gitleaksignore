@@ -1,0 +1,5 @@
+# Findings checked by hand and confirmed not to be secrets. Each line names one commit, file,
+# rule and line, so it cannot hide anything else.
+
+# A made-up key in a unit test, replaced by a generated one in the next commit.
+714ce1efa374a6427d16e4cefdef02d08ecc6e8a:api/src/test/java/dev/ethanyap/slotted/maintenance/application/SweepServiceTest.java:generic-api-key:28

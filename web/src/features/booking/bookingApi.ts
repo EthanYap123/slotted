@@ -118,6 +118,22 @@ export function useCancelSeries() {
   })
 }
 
+export function useCheckIn() {
+  const refresh = useRefreshBookings()
+  return useMutation({
+    mutationFn: (token: string) => request<Booking>('POST', '/check-ins', { body: { token } }),
+    onSettled: refresh,
+  })
+}
+
+export function useEndBooking() {
+  const refresh = useRefreshBookings()
+  return useMutation({
+    mutationFn: (id: string) => request<Booking>('POST', `/bookings/${id}/end`),
+    onSettled: refresh,
+  })
+}
+
 export function useCancelBooking() {
   const refresh = useRefreshBookings()
   return useMutation({

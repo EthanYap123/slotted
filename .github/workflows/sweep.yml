@@ -1,0 +1,36 @@
+name: Maintenance sweep
+
+# Calls the API's cleanup endpoint (PRD SY-1, ADR-0004). The API stays correct without it; the sweep
+# only records what is already true and sends queued email. Off the hour, because GitHub delays or
+# drops scheduled runs most often at the top of the hour.
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: maintenance-sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call the sweep endpoint
+        env:
+          API_URL: ${{ vars.API_URL }}
+          MAINTENANCE_KEY: ${{ secrets.MAINTENANCE_KEY }}
+        run: |
+          if [ -z "$API_URL" ] || [ -z "$MAINTENANCE_KEY" ]; then
+            echo "API_URL or MAINTENANCE_KEY is not set yet (the API is deployed in Phase 4). Nothing to do."
+            exit 0
+          fi
+          # The first call may wake a sleeping server, so allow time and a few retries.
+          curl --fail-with-body --silent --show-error \
+            --retry 3 --retry-all-errors --max-time 120 \
+            -X POST "$API_URL/api/v1/internal/maintenance/sweep" \
+            -H "X-Maintenance-Key: $MAINTENANCE_KEY"
+          echo

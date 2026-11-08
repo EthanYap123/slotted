@@ -79,6 +79,16 @@ public interface BookingRepository
 
   List<Booking> findBySeriesIdOrderByStartAt(UUID seriesId);
 
+  /**
+   * A person's bookings in a room that have not ended and start before {@code until}, for working
+   * out what a check-in means. Cancelled bookings are left out.
+   */
+  @Query(
+      "select b from Booking b where b.userId = :userId and b.roomId = :roomId"
+          + " and b.endAt > :now and b.startAt < :until"
+          + " and b.status <> dev.ethanyap.slotted.booking.domain.BookingStatus.CANCELLED")
+  List<Booking> findForCheckIn(UUID userId, UUID roomId, Instant now, Instant until);
+
   /** The room a booking is in, read without loading the booking, so it can be locked first. */
   @Query("select b.roomId from Booking b where b.id = :id")
   Optional<UUID> findRoomIdById(UUID id);

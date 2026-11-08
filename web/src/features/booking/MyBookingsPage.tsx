@@ -7,6 +7,7 @@ import { dateInSingapore, formatDate, formatTime, isInFuture, isWithinHours } fr
 import {
   useCancelBooking,
   useCancelSeries,
+  useEndBooking,
   useMyBookings,
   type Booking,
   type BookingScope,
@@ -36,6 +37,7 @@ export function MyBookingsPage() {
   const page = Math.max(0, Number(params.get('page') ?? 0) || 0)
   const bookings = useMyBookings(scope, page)
   const [cancelling, setCancelling] = useState<Cancelling | null>(null)
+  const [ending, setEnding] = useState<Booking | null>(null)
   const [cancelled, setCancelled] = useState<string | null>(null)
   const isStudent = useSession().user?.role === 'STUDENT'
 
@@ -105,6 +107,10 @@ export function MyBookingsPage() {
               setCancelled(null)
               setCancelling({ booking, andLater })
             }}
+            onEnd={() => {
+              setCancelled(null)
+              setEnding(booking)
+            }}
           />
         ))}
       </ul>
@@ -139,6 +145,19 @@ export function MyBookingsPage() {
 
       {isStudent && <WaitlistSection scope={scope} />}
 
+      {ending && (
+        <EndDialog
+          booking={ending}
+          onClose={() => {
+            setEnding(null)
+          }}
+          onEnded={(message) => {
+            setEnding(null)
+            setCancelled(message)
+          }}
+        />
+      )}
+
       {cancelling && (
         <CancelDialog
           booking={cancelling.booking}
@@ -159,11 +178,22 @@ export function MyBookingsPage() {
 function BookingCard({
   booking,
   onCancel,
+  onEnd,
 }: {
   booking: Booking
   onCancel: (andLater: boolean) => void
+  onEnd: () => void
 }) {
   const canCancel = booking.status === 'CONFIRMED' && isInFuture(booking.startAt)
+  // Check-in itself needs the room's QR code; the link explains how (ST-5, ST-8).
+  const canCheckIn =
+    booking.status === 'CONFIRMED' &&
+    booking.checkInOpensAt !== undefined &&
+    !isInFuture(booking.checkInOpensAt) &&
+    booking.checkInClosesAt !== undefined &&
+    isInFuture(booking.checkInClosesAt)
+  const canEnd =
+    booking.status === 'CHECKED_IN' && isInFuture(booking.endAt) && booking.releasedAt == null
   return (
     <li className="booking-card">
       <div className="booking-main">
@@ -186,6 +216,25 @@ function BookingCard({
         <span className={`badge badge-${booking.status.toLowerCase()}`}>
           {STATUS_LABEL[booking.status]}
         </span>
+        {canCheckIn && (
+          <Link
+            to="/check-in"
+            className="button button-primary"
+            aria-label={`Check in to ${booking.roomName}, ${formatTime(booking.startAt)}`}
+          >
+            Check in
+          </Link>
+        )}
+        {canEnd && (
+          <button
+            type="button"
+            className="button"
+            aria-label={`End ${booking.roomName}, ${formatTime(booking.startAt)}, now`}
+            onClick={onEnd}
+          >
+            End now
+          </button>
+        )}
         {canCancel && (
           <button
             type="button"
@@ -212,6 +261,56 @@ function BookingCard({
         )}
       </div>
     </li>
+  )
+}
+
+/** Ending a checked-in booking releases the rest of it for others (BR-15). */
+function EndDialog({
+  booking,
+  onClose,
+  onEnded,
+}: {
+  booking: Booking
+  onClose: () => void
+  onEnded: (message: string) => void
+}) {
+  const end = useEndBooking()
+  const when = `${booking.roomName}, ${formatTime(booking.startAt)} to ${formatTime(booking.endAt)}`
+
+  return (
+    <Modal title="End this booking now?" onClose={onClose}>
+      <p className="modal-when">{when}</p>
+      <p>
+        The rest of the time is released from the next half hour, so someone else can book it or get
+        it from the waitlist. This cannot be undone.
+      </p>
+      {end.error && (
+        <p className="form-error" role="alert">
+          {errorMessage(end.error)}
+        </p>
+      )}
+      <div className="modal-actions">
+        <button type="button" className="button" onClick={onClose}>
+          Keep booking
+        </button>
+        <button
+          type="button"
+          className="button button-danger"
+          disabled={end.isPending}
+          onClick={() => {
+            end.mutate(booking.id, {
+              onSuccess: (result) => {
+                onEnded(
+                  `Ended ${booking.roomName}. The room is free from ${formatTime(result.endAt)}.`,
+                )
+              },
+            })
+          }}
+        >
+          {end.isPending ? 'Ending…' : 'End booking'}
+        </button>
+      </div>
+    </Modal>
   )
 }
 

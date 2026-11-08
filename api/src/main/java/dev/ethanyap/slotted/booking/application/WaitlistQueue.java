@@ -62,25 +62,41 @@ public class WaitlistQueue {
    * the rollback would undo the promotion it had just given the waiting student (ADR-0007).
    */
   @Transactional
-  public void settleAndPromote(UUID roomId) {
+  public Settled settleAndPromote(UUID roomId) {
     var room = lookup.lockRoom(roomId);
     var now = clock.instant();
-    settle(roomId, now);
-    promoteIn(room, now);
+    var noShows = settle(roomId, now);
+    return new Settled(noShows, promoteIn(room, now));
+  }
+
+  /** How many no-shows were written down and how many entries were promoted. */
+  public record Settled(int noShows, int promoted) {}
+
+  /**
+   * Writes down that waiting entries whose slot has started are expired (BR-28). They already count
+   * as expired everywhere (ADR-0004); this only records it. Returns how many.
+   */
+  @Transactional
+  public int expireStarted() {
+    return waitlist.expireStarted(clock.instant());
   }
 
   /** Writes down the no-shows that time has already made true in this room (ADR-0004). */
-  void settle(UUID roomId, Instant now) {
-    bookings.settleNoShows(
+  int settle(UUID roomId, Instant now) {
+    return bookings.settleNoShows(
         roomId, now.minus(policy.noShowGrace()), policy.noShowGrace().toSeconds());
   }
 
-  /** Goes through the room's queue in order, promoting every entry that can have its slot now. */
-  void promoteIn(Room room, Instant now) {
+  /**
+   * Goes through the room's queue in order, promoting every entry that can have its slot now.
+   * Returns how many were promoted.
+   */
+  int promoteIn(Room room, Instant now) {
     var queue = waitlist.findQueue(room.getId(), now);
     if (queue.isEmpty()) {
-      return;
+      return 0;
     }
+    var promoted = 0;
     var facility = lookup.facilityOf(room);
     for (var entry : queue) {
       if (!isFree(entry, now)) {
@@ -98,8 +114,10 @@ public class WaitlistQueue {
                 Booking.promoted(
                     room.getId(), entry.getUserId(), entry.getStartAt(), entry.getEndAt()));
         entry.markPromoted(booking.getId(), now);
+        promoted++;
       }
     }
+    return promoted;
   }
 
   /** Entries that a change to these rooms and times would affect. */
