@@ -156,8 +156,12 @@ erDiagram
     email_outbox {
         bigint id PK
         text to_address
-        text template
-        jsonb payload
+        text to_name
+        text kind
+        text subject
+        text text_body
+        text html_body
+        text dedupe_key UK "partial"
         text status "PENDING | SENT | FAILED | SKIPPED"
         smallint attempts
         timestamptz next_attempt_at
@@ -182,7 +186,7 @@ erDiagram
 | `booking` | One booking. Stored `status` is what was last written; effective status (no-show, finished) is derived at read time ([ADR-0004](adr/0004-lazy-evaluation-of-time-based-rules.md)). Ending a checked-in booking early (BR-15) moves `end_at` to the next 30-minute boundary and sets `released_at`, so the freed time stops being covered by the exclusion constraint; the original end time stays in the audit log. |
 | `waitlist_entry` | A student waiting for an exact slot. Queue order is `created_at`, then `id`. |
 | `audit_log` | Append-only history of every change (BR-32). |
-| `email_outbox` | Emails written in the same transaction as the change, sent and retried by the dispatcher. |
+| `email_outbox` | Emails written in the same transaction as the change, sent after commit and retried by the sweep (5 tries). Text is written when queued. `dedupe_key`, unique when set, sends some emails (suspension notices) only once. |
 
 Utilisation analytics (AD-4) are computed from `booking`, `opening_hours` and `blackout` by query; there is no separate analytics table at this scale.
 

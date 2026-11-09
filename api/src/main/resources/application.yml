@@ -82,6 +82,16 @@ slotted:
   check-in:
     # The web app's address; rooms' QR codes open <web-url>/check-in?token=...
     web-url: ${WEB_URL:http://localhost:5173}
+  email:
+    # Brevo free plan (docs/COSTS.md). Without BREVO_API_KEY, emails are written to the log.
+    from-address: ${EMAIL_FROM_ADDRESS:no-reply@slotted.invalid}
+    from-name: ${EMAIL_FROM_NAME:Slotted}
+    brevo-api-key: ${BREVO_API_KEY:}
+    daily-cap: 250
+    # Reserved domains used by demo accounts; never sent to.
+    skip-domains: example.com, example.org, example.net, test, example, invalid, localhost
+    web-url: ${WEB_URL:http://localhost:5173}
+    retention: 30d
   maintenance:
     # Shared secret for the scheduled sweep (ADR-0004). Empty turns the endpoint off.
     key: ${MAINTENANCE_KEY:}

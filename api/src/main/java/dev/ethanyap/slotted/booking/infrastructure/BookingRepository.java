@@ -49,6 +49,26 @@ public interface BookingRepository
       nativeQuery = true)
   int settleNoShows(UUID roomId, Instant cutoff, long graceSeconds);
 
+  /**
+   * The settle step, telling who the no-shows belong to, so suspensions can be noticed (BR-18). The
+   * same update as {@link #settleNoShows}, returning one user ID per booking settled.
+   */
+  @Query(
+      value =
+          """
+          UPDATE booking
+             SET status = 'NO_SHOW',
+                 released_at = start_at + make_interval(secs => :graceSeconds),
+                 updated_at = now(),
+                 version = version + 1
+           WHERE room_id = :roomId
+             AND status = 'CONFIRMED'
+             AND start_at <= :cutoff
+          RETURNING user_id
+          """,
+      nativeQuery = true)
+  List<UUID> settleNoShowsReturningUsers(UUID roomId, Instant cutoff, long graceSeconds);
+
   @Query(
       "select count(b) > 0 from Booking b where b.roomId = :roomId"
           + " and b.startAt < :endAt and b.endAt > :startAt and "

@@ -23,7 +23,9 @@ import org.testcontainers.junit.jupiter.Testcontainers;
       "slotted.bootstrap-admin.email=" + IntegrationTest.ADMIN_EMAIL,
       "slotted.bootstrap-admin.password=" + IntegrationTest.ADMIN_PASSWORD,
       "slotted.maintenance.key=" + IntegrationTest.MAINTENANCE_KEY,
-      "slotted.maintenance.min-interval=0s"
+      "slotted.maintenance.min-interval=0s",
+      // Test users are on example.com, so only example.org is skipped here.
+      "slotted.email.skip-domains=example.org"
     })
 @Import(TestcontainersConfiguration.class)
 @Testcontainers(disabledWithoutDocker = true)

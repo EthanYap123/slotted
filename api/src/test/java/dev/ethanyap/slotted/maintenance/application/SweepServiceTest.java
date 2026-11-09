@@ -45,6 +45,7 @@ class SweepServiceTest {
         null,
         null,
         null,
+        null,
         jdbc,
         new MaintenanceProperties(key, Duration.ofMinutes(1), Duration.ofDays(1)),
         clock);

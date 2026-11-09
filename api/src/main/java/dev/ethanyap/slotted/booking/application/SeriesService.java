@@ -9,7 +9,6 @@ import dev.ethanyap.slotted.booking.infrastructure.BookingRepository;
 import dev.ethanyap.slotted.booking.infrastructure.BookingSeriesRepository;
 import dev.ethanyap.slotted.common.ApiException;
 import dev.ethanyap.slotted.common.ErrorCode;
-import dev.ethanyap.slotted.facility.application.FacilityAccess;
 import dev.ethanyap.slotted.facility.domain.Facility;
 import dev.ethanyap.slotted.room.domain.Room;
 import dev.ethanyap.slotted.user.domain.Role;
@@ -36,7 +35,7 @@ public class SeriesService {
   private final BookingRepository bookings;
   private final BookerFactsReader facts;
   private final BookingLookup lookup;
-  private final FacilityAccess access;
+  private final BookingNotifier notifier;
   private final BookingPolicy policy;
   private final Clock clock;
 
@@ -45,14 +44,14 @@ public class SeriesService {
       BookingRepository bookings,
       BookerFactsReader facts,
       BookingLookup lookup,
-      FacilityAccess access,
+      BookingNotifier notifier,
       BookingPolicy policy,
       Clock clock) {
     this.seriesRepository = seriesRepository;
     this.bookings = bookings;
     this.facts = facts;
     this.lookup = lookup;
-    this.access = access;
+    this.notifier = notifier;
     this.policy = policy;
     this.clock = clock;
   }
@@ -105,15 +104,9 @@ public class SeriesService {
       }
     }
     var skipped = occurrences.stream().filter(o -> !o.bookable()).toList();
-    return new CreatedSeries(series, occurrencesOf(series, now, false), skipped);
-  }
-
-  /** A series the caller made, or one in a facility they manage. */
-  @Transactional(readOnly = true)
-  public CreatedSeries get(UUID actorId, UUID seriesId) {
-    var series = visibleSeries(actorId, seriesId);
-    var staff = !series.getUserId().equals(actorId);
-    return new CreatedSeries(series, occurrencesOf(series, clock.instant(), staff), List.of());
+    var booked = bookings.findBySeriesIdOrderByStartAt(series.getId());
+    notifier.seriesConfirmed(booked, skipped);
+    return new CreatedSeries(series, lookup.viewsOf(booked, now, false), skipped);
   }
 
   /** The rules about the series itself, which fail it as a whole (BR-20, BR-21). */
@@ -183,22 +176,6 @@ public class SeriesService {
               .toInstant());
     }
     return starts;
-  }
-
-  BookingSeries visibleSeries(UUID actorId, UUID seriesId) {
-    var series =
-        seriesRepository
-            .findById(seriesId)
-            .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "No series with this ID."));
-    var room = lookup.room(series.getRoomId());
-    if (!series.getUserId().equals(actorId) && !access.canManage(room.getFacilityId(), actorId)) {
-      throw new ApiException(ErrorCode.NOT_FOUND, "No series with this ID.");
-    }
-    return series;
-  }
-
-  List<BookingView> occurrencesOf(BookingSeries series, Instant now, boolean withNames) {
-    return lookup.viewsOf(bookings.findBySeriesIdOrderByStartAt(series.getId()), now, withNames);
   }
 
   /** What the caller asked to repeat. */

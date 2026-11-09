@@ -6,7 +6,6 @@ import dev.ethanyap.slotted.booking.infrastructure.BookingRepository;
 import dev.ethanyap.slotted.booking.infrastructure.WaitlistRepository;
 import dev.ethanyap.slotted.user.domain.UserAccessChanged;
 import dev.ethanyap.slotted.user.domain.UserStatus;
-import dev.ethanyap.slotted.user.infrastructure.UserRepository;
 import java.time.Clock;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
@@ -23,7 +22,7 @@ public class CancelBookingsOfDisabledUser {
 
   private final BookingRepository bookings;
   private final WaitlistRepository waitlist;
-  private final UserRepository users;
+  private final BookingNotifier notifier;
   private final BookingLookup lookup;
   private final WaitlistQueue queue;
   private final BookingPolicy policy;
@@ -32,14 +31,14 @@ public class CancelBookingsOfDisabledUser {
   CancelBookingsOfDisabledUser(
       BookingRepository bookings,
       WaitlistRepository waitlist,
-      UserRepository users,
+      BookingNotifier notifier,
       BookingLookup lookup,
       WaitlistQueue queue,
       BookingPolicy policy,
       Clock clock) {
     this.bookings = bookings;
     this.waitlist = waitlist;
-    this.users = users;
+    this.notifier = notifier;
     this.lookup = lookup;
     this.queue = queue;
     this.policy = policy;
@@ -49,7 +48,8 @@ public class CancelBookingsOfDisabledUser {
   @EventListener
   public void on(UserAccessChanged event) {
     // Locking first keeps the usual order of locks: user, then rooms (ADR-0006).
-    var disabled = users.lockById(event.userId()).filter(u -> u.getStatus() == UserStatus.DISABLED);
+    var disabled =
+        lookup.lockUser(event.userId()).filter(u -> u.getStatus() == UserStatus.DISABLED);
     if (disabled.isEmpty()) {
       return;
     }
@@ -65,6 +65,7 @@ public class CancelBookingsOfDisabledUser {
             .map(lookup::lockRoom)
             .toList();
     upcoming.forEach(booking -> booking.cancelBySystem(now, policy, REASON));
+    notifier.cancelled(upcoming, REASON);
     rooms.forEach(room -> queue.promoteIn(room, now));
   }
 }
