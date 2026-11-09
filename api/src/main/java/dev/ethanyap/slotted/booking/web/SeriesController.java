@@ -2,6 +2,7 @@ package dev.ethanyap.slotted.booking.web;
 
 import dev.ethanyap.slotted.booking.application.BookingAttempts;
 import dev.ethanyap.slotted.booking.application.BookingCancellation;
+import dev.ethanyap.slotted.booking.application.BookingQueries;
 import dev.ethanyap.slotted.booking.application.SeriesService;
 import dev.ethanyap.slotted.booking.application.SeriesService.CreatedSeries;
 import dev.ethanyap.slotted.booking.application.SeriesService.NewSeries;
@@ -37,16 +38,19 @@ import org.springframework.web.bind.annotation.RestController;
 public class SeriesController {
 
   private final SeriesService series;
+  private final BookingQueries queries;
   private final BookingAttempts attempts;
   private final BookingCancellation cancellation;
   private final BookingPolicy policy;
 
   public SeriesController(
       SeriesService series,
+      BookingQueries queries,
       BookingAttempts attempts,
       BookingCancellation cancellation,
       BookingPolicy policy) {
     this.series = series;
+    this.queries = queries;
     this.attempts = attempts;
     this.cancellation = cancellation;
     this.policy = policy;
@@ -71,7 +75,7 @@ public class SeriesController {
 
   @GetMapping("/{seriesId}")
   public SeriesResponse get(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID seriesId) {
-    return SeriesResponse.from(series.get(Principals.userId(jwt), seriesId), policy);
+    return SeriesResponse.from(queries.series(Principals.userId(jwt), seriesId), policy);
   }
 
   @PostMapping("/{seriesId}/cancel")

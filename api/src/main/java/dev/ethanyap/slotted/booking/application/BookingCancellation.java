@@ -5,7 +5,6 @@ import dev.ethanyap.slotted.booking.domain.BookingPolicy;
 import dev.ethanyap.slotted.booking.infrastructure.BookingRepository;
 import dev.ethanyap.slotted.common.ApiException;
 import dev.ethanyap.slotted.common.ErrorCode;
-import dev.ethanyap.slotted.facility.application.FacilityAccess;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -23,25 +22,25 @@ public class BookingCancellation {
 
   private final BookingRepository bookings;
   private final BookingLookup lookup;
-  private final SeriesService series;
-  private final FacilityAccess access;
+  private final BookingQueries queries;
   private final WaitlistQueue queue;
+  private final BookingNotifier notifier;
   private final BookingPolicy policy;
   private final Clock clock;
 
   BookingCancellation(
       BookingRepository bookings,
       BookingLookup lookup,
-      SeriesService series,
-      FacilityAccess access,
+      BookingQueries queries,
       WaitlistQueue queue,
+      BookingNotifier notifier,
       BookingPolicy policy,
       Clock clock) {
     this.bookings = bookings;
     this.lookup = lookup;
-    this.series = series;
-    this.access = access;
+    this.queries = queries;
     this.queue = queue;
+    this.notifier = notifier;
     this.policy = policy;
     this.clock = clock;
   }
@@ -60,8 +59,10 @@ public class BookingCancellation {
     var booking = bookings.findById(bookingId).orElseThrow(BookingCancellation::bookingNotFound);
     if (booking.getUserId().equals(actorId)) {
       booking.cancelByOwner(now, policy, reason);
-    } else if (access.canManage(room.getFacilityId(), actorId)) {
+      notifier.cancelled(List.of(booking), null);
+    } else if (queries.canManage(room.getFacilityId(), actorId)) {
       booking.cancelByStaff(actorId, now, policy, reason);
+      notifier.cancelled(List.of(booking), reason);
     } else {
       throw bookingNotFound();
     }
@@ -76,7 +77,7 @@ public class BookingCancellation {
   @Transactional
   public CreatedSeries cancelSeriesFrom(
       UUID actorId, UUID seriesId, LocalDate fromDate, String reason) {
-    var cancelling = series.visibleSeries(actorId, seriesId);
+    var cancelling = queries.visibleSeries(actorId, seriesId);
     var owner = cancelling.getUserId().equals(actorId);
     var room = lookup.lockRoom(cancelling.getRoomId());
     var zone = ZoneId.of(lookup.facilityOf(room).getTimeZone());
@@ -101,6 +102,7 @@ public class BookingCancellation {
         booking.cancelByStaff(actorId, now, policy, reason);
       }
     }
+    notifier.cancelled(toCancel, owner ? null : reason);
     var anyLeft =
         bookings.findBySeriesIdOrderByStartAt(cancelling.getId()).stream()
             .anyMatch(b -> b.getStartAt().isAfter(now) && b.getStatus().isActive());
@@ -108,7 +110,7 @@ public class BookingCancellation {
       cancelling.markCancelled(now);
     }
     queue.promoteIn(room, now);
-    return new CreatedSeries(cancelling, series.occurrencesOf(cancelling, now, !owner), List.of());
+    return new CreatedSeries(cancelling, queries.occurrencesOf(cancelling, now, !owner), List.of());
   }
 
   private static ApiException bookingNotFound() {

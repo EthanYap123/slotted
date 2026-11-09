@@ -77,6 +77,27 @@ class BookingLookup {
     return rooms.findByCheckInToken(token);
   }
 
+  /** A user, active or not, for writing to them. */
+  User user(UUID userId) {
+    return users.findById(userId).orElseThrow();
+  }
+
+  List<User> users(Collection<UUID> userIds) {
+    return users.findAllById(new HashSet<>(userIds));
+  }
+
+  /** The user, locked, whatever their status; empty if there is no such user. */
+  Optional<User> lockUser(UUID userId) {
+    return users.lockById(userId);
+  }
+
+  /** A facility, or {@code NOT_FOUND}. */
+  Facility facility(UUID facilityId) {
+    return facilities
+        .findById(facilityId)
+        .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "No facility with this ID."));
+  }
+
   Room room(UUID roomId) {
     return rooms
         .findById(roomId)

@@ -5,6 +5,7 @@ import dev.ethanyap.slotted.booking.application.WaitlistQueue;
 import dev.ethanyap.slotted.common.ApiException;
 import dev.ethanyap.slotted.common.ErrorCode;
 import dev.ethanyap.slotted.maintenance.infrastructure.MaintenanceProperties;
+import dev.ethanyap.slotted.notification.application.EmailDispatcher;
 import dev.ethanyap.slotted.room.infrastructure.RoomRepository;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -21,8 +22,9 @@ import org.springframework.stereotype.Service;
 /**
  * The scheduled cleanup (PRD SY-1, ADR-0004). It only writes down what is already true, so the
  * application stays correct whether or not it runs: overdue no-shows are recorded and their time
- * offered to the waitlist, started waitlist entries are marked expired, and old refresh tokens are
- * deleted. Running it twice in a row does nothing the second time.
+ * offered to the waitlist, started waitlist entries are marked expired, queued emails that are due
+ * are sent, and old refresh tokens and sent emails are deleted. Running it twice in a row does
+ * nothing the second time.
  */
 @Service
 public class SweepService {
@@ -30,11 +32,15 @@ public class SweepService {
   /** Arbitrary, fixed key for the Postgres advisory lock that stops two sweeps overlapping. */
   static final long LOCK_KEY = 5_310_771_053L;
 
+  /** Bounds one sweep's work; the daily cap stops sending earlier anyway. */
+  static final int MAX_EMAILS_PER_SWEEP = 300;
+
   private static final Logger log = LoggerFactory.getLogger(SweepService.class);
 
   private final RoomRepository rooms;
   private final WaitlistQueue queue;
   private final ExpiredRefreshTokens refreshTokens;
+  private final EmailDispatcher emails;
   private final JdbcTemplate jdbc;
   private final MaintenanceProperties properties;
   private final Clock clock;
@@ -44,12 +50,14 @@ public class SweepService {
       RoomRepository rooms,
       WaitlistQueue queue,
       ExpiredRefreshTokens refreshTokens,
+      EmailDispatcher emails,
       JdbcTemplate jdbc,
       MaintenanceProperties properties,
       Clock clock) {
     this.rooms = rooms;
     this.queue = queue;
     this.refreshTokens = refreshTokens;
+    this.emails = emails;
     this.jdbc = jdbc;
     this.properties = properties;
     this.clock = clock;
@@ -105,14 +113,15 @@ public class SweepService {
       promoted += settled.promoted();
     }
     var expired = queue.expireStarted();
-    var purged = refreshTokens.purge(properties.refreshTokenRetention());
+    var delivered = emails.sendDue(MAX_EMAILS_PER_SWEEP);
+    var purged = refreshTokens.purge(properties.refreshTokenRetention()) + emails.purgeFinished();
     return new SweepResult(
         true,
         noShows,
         promoted,
         expired,
-        0,
-        0,
+        delivered.sent(),
+        delivered.failed(),
         purged,
         Duration.between(started, clock.instant()).toMillis());
   }
@@ -126,7 +135,7 @@ public class SweepService {
   }
 
   /**
-   * What a sweep did. Emails arrive with #54, so their counts are always 0 for now.
+   * What a sweep did.
    *
    * @param ranSweep false if another sweep held the lock
    */

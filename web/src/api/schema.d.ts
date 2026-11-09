@@ -672,7 +672,7 @@ export interface paths {
          * Settle overdue no-shows, expire waitlist entries and send queued email (ADR-0004)
          * @description Called by a scheduled GitHub Actions workflow. Idempotent; overlapping calls skip
          *     (`ranSweep: false`), and calls less than a minute apart get `429`. Not authenticated with a JWT;
-         *     with no `MAINTENANCE_KEY` set, every call gets `401`. Email counts stay 0 until email is added.
+         *     with no `MAINTENANCE_KEY` set, every call gets `401`.
          */
         post: operations["runMaintenanceSweep"];
         delete?: never;

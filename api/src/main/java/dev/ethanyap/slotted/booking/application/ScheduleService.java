@@ -8,7 +8,6 @@ import dev.ethanyap.slotted.booking.infrastructure.BlackoutRepository;
 import dev.ethanyap.slotted.booking.infrastructure.BookingRepository;
 import dev.ethanyap.slotted.common.ApiException;
 import dev.ethanyap.slotted.common.ErrorCode;
-import dev.ethanyap.slotted.facility.application.FacilityService;
 import dev.ethanyap.slotted.facility.domain.Facility;
 import dev.ethanyap.slotted.facility.domain.OpeningPeriod;
 import dev.ethanyap.slotted.room.domain.Room;
@@ -39,7 +38,7 @@ public class ScheduleService {
   private final BlackoutRepository blackouts;
   private final BookingRepository bookings;
   private final BookingLookup lookup;
-  private final FacilityService facilities;
+  private final BookingNotifier notifier;
   private final WaitlistQueue queue;
   private final BookingPolicy policy;
   private final Clock clock;
@@ -48,14 +47,14 @@ public class ScheduleService {
       BlackoutRepository blackouts,
       BookingRepository bookings,
       BookingLookup lookup,
-      FacilityService facilities,
+      BookingNotifier notifier,
       WaitlistQueue queue,
       BookingPolicy policy,
       Clock clock) {
     this.blackouts = blackouts;
     this.bookings = bookings;
     this.lookup = lookup;
-    this.facilities = facilities;
+    this.notifier = notifier;
     this.queue = queue;
     this.policy = policy;
     this.clock = clock;
@@ -66,7 +65,7 @@ public class ScheduleService {
   public Impact changeOpeningHours(
       UUID actorId, UUID facilityId, Collection<OpeningPeriod> periods, boolean dryRun) {
     Facility.checkOneEntryPerDay(periods);
-    var facility = facilities.get(facilityId);
+    var facility = lookup.facility(facilityId);
     var rooms = lookup.lockRoomsOf(facilityId);
     var now = clock.instant();
     var zone = ZoneId.of(facility.getTimeZone());
@@ -82,6 +81,7 @@ public class ScheduleService {
             .toList();
     if (!dryRun) {
       affected.forEach(b -> b.cancelByStaff(actorId, now, policy, HOURS_CHANGED));
+      notifier.cancelled(affected, HOURS_CHANGED);
       entries.forEach(e -> e.markExpired(now));
       facility.replaceOpeningHours(periods);
       rooms.forEach(room -> queue.promoteIn(room, now));
@@ -96,7 +96,7 @@ public class ScheduleService {
   @Transactional
   public BlackoutOutcome createBlackout(
       UUID actorId, UUID facilityId, NewBlackout request, boolean dryRun) {
-    facilities.get(facilityId);
+    lookup.facility(facilityId);
     var rooms = lookup.lockRoomsOf(facilityId);
     var now = clock.instant();
     if (request.roomId() != null
@@ -126,6 +126,7 @@ public class ScheduleService {
       return new BlackoutOutcome(null, new Impact(false, views, entries.size()));
     }
     affected.forEach(b -> b.cancelByStaff(actorId, now, policy, blackout.getReason()));
+    notifier.cancelled(affected, blackout.getReason());
     entries.forEach(e -> e.markExpired(now));
     var created = blackouts.saveAndFlush(blackout);
     // A cancelled booking can reach past the blackout, freeing time someone else is waiting for.
@@ -136,7 +137,7 @@ public class ScheduleService {
   /** Blackouts overlapping a period; either end may be left open. */
   @Transactional(readOnly = true)
   public List<Blackout> listBlackouts(UUID facilityId, Instant from, Instant to) {
-    facilities.get(facilityId);
+    lookup.facility(facilityId);
     return blackouts.findOverlapping(
         facilityId, from == null ? FAR_PAST : from, to == null ? FAR_FUTURE : to);
   }

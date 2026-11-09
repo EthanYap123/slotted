@@ -85,7 +85,8 @@ Sources: Brevo free plan as described in [Brevo pricing guides](https://dev.to/t
 
 | Limit | Value |
 | --- | --- |
-| Volume | 300 emails per day |
+| Volume | 300 emails per day; resets daily, no time limit on the plan ([Brevo help centre](https://help.brevo.com/hc/en-us/articles/208580669-FAQs-What-are-the-limits-of-the-Free-plan), checked 10 Nov 2026) |
+| Over the limit | Up to 1,000 more transactional emails wait in Brevo's retry queue; the API answers `429` when its rate limit is exceeded ([API limits](https://developers.brevo.com/docs/api-limits)) |
 | Access | REST API and SMTP relay, transactional email included on Free |
 | Branding | Brevo badge in the footer, cannot be removed on Free |
 | Card | Not required |
@@ -96,7 +97,8 @@ Sources: Brevo free plan as described in [Brevo pricing guides](https://dev.to/t
 **How Slotted stays inside it**
 
 - Emails are written to an outbox table and sent by a dispatcher, so a failed or rate-limited send is retried later instead of breaking a booking ([ADR-0004](adr/0004-lazy-evaluation-of-time-based-rules.md)).
-- A daily cap in config (default 250) stops sending before Brevo's limit and leaves the rest queued.
+- A daily cap in config (default 250, per UTC day) stops sending before Brevo's limit and leaves the rest queued.
+- Without `BREVO_API_KEY` emails are written to the log with the address partly hidden, so no account is needed until deployment.
 - Demo accounts use addresses on a reserved domain (`@example.com`), which are skipped, not sent.
 - The sender sits behind an `EmailSender` interface. A Gmail SMTP sender (app password, no domain) is the fallback if Brevo stops working; its limits must be checked and recorded here before it is used.
 

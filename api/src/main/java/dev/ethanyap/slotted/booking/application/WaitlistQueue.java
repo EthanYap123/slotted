@@ -38,6 +38,7 @@ public class WaitlistQueue {
   private final BookingRepository bookings;
   private final BookingLookup lookup;
   private final BookerFactsReader facts;
+  private final BookingNotifier notifier;
   private final BookingPolicy policy;
   private final Clock clock;
 
@@ -46,12 +47,14 @@ public class WaitlistQueue {
       BookingRepository bookings,
       BookingLookup lookup,
       BookerFactsReader facts,
+      BookingNotifier notifier,
       BookingPolicy policy,
       Clock clock) {
     this.waitlist = waitlist;
     this.bookings = bookings;
     this.lookup = lookup;
     this.facts = facts;
+    this.notifier = notifier;
     this.policy = policy;
     this.clock = clock;
   }
@@ -83,8 +86,30 @@ public class WaitlistQueue {
 
   /** Writes down the no-shows that time has already made true in this room (ADR-0004). */
   int settle(UUID roomId, Instant now) {
-    return bookings.settleNoShows(
-        roomId, now.minus(policy.noShowGrace()), policy.noShowGrace().toSeconds());
+    var students =
+        bookings.settleNoShowsReturningUsers(
+            roomId, now.minus(policy.noShowGrace()), policy.noShowGrace().toSeconds());
+    if (!students.isEmpty()) {
+      noticeSuspensions(students, now);
+    }
+    return students.size();
+  }
+
+  /**
+   * Emails students whom these no-shows suspended (BR-18). Only once per suspension, however many
+   * times it is noticed: the email is keyed by the student and the suspension's end.
+   */
+  private void noticeSuspensions(List<UUID> students, Instant now) {
+    var users = lookup.users(students);
+    var zone = ZoneId.of(Facility.DEFAULT_TIME_ZONE);
+    facts
+        .suspendedUntil(users, now)
+        .forEach(
+            (userId, until) ->
+                users.stream()
+                    .filter(u -> u.getId().equals(userId))
+                    .findFirst()
+                    .ifPresent(u -> notifier.suspended(u, until, zone)));
   }
 
   /**
@@ -114,6 +139,7 @@ public class WaitlistQueue {
                 Booking.promoted(
                     room.getId(), entry.getUserId(), entry.getStartAt(), entry.getEndAt()));
         entry.markPromoted(booking.getId(), now);
+        notifier.promoted(booking);
         promoted++;
       }
     }

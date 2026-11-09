@@ -2,8 +2,8 @@ package dev.ethanyap.slotted.booking.web;
 
 import dev.ethanyap.slotted.booking.application.BookingAttempts;
 import dev.ethanyap.slotted.booking.application.BookingCancellation;
-import dev.ethanyap.slotted.booking.application.BookingService;
-import dev.ethanyap.slotted.booking.application.BookingService.BookingQuery;
+import dev.ethanyap.slotted.booking.application.BookingQueries;
+import dev.ethanyap.slotted.booking.application.BookingQueries.BookingQuery;
 import dev.ethanyap.slotted.booking.application.BookingService.NewBooking;
 import dev.ethanyap.slotted.booking.domain.BookingPolicy;
 import dev.ethanyap.slotted.booking.domain.EffectiveStatus;
@@ -37,13 +37,13 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/bookings")
 public class BookingController {
 
-  private final BookingService bookings;
+  private final BookingQueries bookings;
   private final BookingAttempts attempts;
   private final BookingCancellation cancellation;
   private final BookingPolicy policy;
 
   public BookingController(
-      BookingService bookings,
+      BookingQueries bookings,
       BookingAttempts attempts,
       BookingCancellation cancellation,
       BookingPolicy policy) {
