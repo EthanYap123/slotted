@@ -1,5 +1,8 @@
 package dev.ethanyap.slotted.room.application;
 
+import dev.ethanyap.slotted.audit.application.AuditLog;
+import dev.ethanyap.slotted.audit.domain.AuditAction;
+import dev.ethanyap.slotted.audit.domain.Change;
 import dev.ethanyap.slotted.common.ApiException;
 import dev.ethanyap.slotted.common.ErrorCode;
 import dev.ethanyap.slotted.common.IfMatch;
@@ -11,6 +14,7 @@ import dev.ethanyap.slotted.room.infrastructure.RoomRepository;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -25,13 +29,18 @@ public class RoomService {
   private final RoomRepository rooms;
   private final FacilityRepository facilities;
   private final CheckInProperties checkIn;
+  private final AuditLog audit;
   private final SecureRandom random = new SecureRandom();
 
   public RoomService(
-      RoomRepository rooms, FacilityRepository facilities, CheckInProperties checkIn) {
+      RoomRepository rooms,
+      FacilityRepository facilities,
+      CheckInProperties checkIn,
+      AuditLog audit) {
     this.checkIn = checkIn;
     this.rooms = rooms;
     this.facilities = facilities;
+    this.audit = audit;
   }
 
   /** Rooms sorted by name; inactive ones only when asked for. */
@@ -58,7 +67,7 @@ public class RoomService {
   }
 
   @Transactional
-  public Room create(UUID facilityId, RoomDetails details) {
+  public Room create(UUID actorId, UUID facilityId, RoomDetails details) {
     requireFacility(facilityId);
     var room =
         new Room(
@@ -71,14 +80,18 @@ public class RoomService {
     if (rooms.existsByFacilityIdAndNameIgnoreCase(facilityId, room.getName())) {
       throw nameTaken();
     }
-    return saveUniquely(room);
+    var saved = saveUniquely(room);
+    record(AuditAction.ROOM_CREATED, actorId, saved, null);
+    return saved;
   }
 
   /** Applies the fields that are not null. Deactivating keeps existing bookings (BR-10). */
   @Transactional
-  public Room update(UUID roomId, Long expectedVersion, RoomDetails changes, Boolean active) {
+  public Room update(
+      UUID actorId, UUID roomId, Long expectedVersion, RoomDetails changes, Boolean active) {
     var room = get(roomId);
     IfMatch.check(expectedVersion, room.getVersion());
+    var before = room.auditState();
     if (changes.name() != null) {
       room.rename(changes.name());
       if (rooms.existsByFacilityIdAndNameIgnoreCaseAndIdNot(
@@ -98,7 +111,11 @@ public class RoomService {
     if (active != null) {
       room.setActive(active);
     }
-    return saveUniquely(room);
+    var saved = saveUniquely(room);
+    if (!before.equals(saved.auditState())) {
+      record(AuditAction.ROOM_UPDATED, actorId, saved, before);
+    }
+    return saved;
   }
 
   /**
@@ -115,8 +132,16 @@ public class RoomService {
 
   /** Issues a new token, so printed copies of the old QR code stop working at once (MG-5). */
   @Transactional
-  public void rotateCheckInToken(UUID roomId) {
-    get(roomId).replaceCheckInToken(newCheckInToken());
+  public void rotateCheckInToken(UUID actorId, UUID roomId) {
+    var room = get(roomId);
+    room.replaceCheckInToken(newCheckInToken());
+    // The token is a secret, so before and after look the same; the action says what happened.
+    record(AuditAction.ROOM_QR_ROTATED, actorId, room, room.auditState());
+  }
+
+  private void record(AuditAction action, UUID actorId, Room room, Map<String, Object> before) {
+    audit.record(
+        new Change(action, room.getId(), room.getFacilityId(), actorId, before, room.auditState()));
   }
 
   private void requireFacility(UUID facilityId) {

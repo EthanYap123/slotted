@@ -26,7 +26,8 @@ public class BookingService {
   private final BookingRepository bookings;
   private final BookingLookup lookup;
   private final BookerFactsReader facts;
-  private final BookingNotifier notifier;
+  private final BookingRecorder recorder;
+  private final WaitlistQueue queue;
   private final BookingPolicy policy;
   private final Clock clock;
 
@@ -34,13 +35,15 @@ public class BookingService {
       BookingRepository bookings,
       BookingLookup lookup,
       BookerFactsReader facts,
-      BookingNotifier notifier,
+      BookingRecorder recorder,
+      WaitlistQueue queue,
       BookingPolicy policy,
       Clock clock) {
     this.bookings = bookings;
     this.lookup = lookup;
     this.facts = facts;
-    this.notifier = notifier;
+    this.recorder = recorder;
+    this.queue = queue;
     this.policy = policy;
     this.clock = clock;
   }
@@ -58,8 +61,7 @@ public class BookingService {
     var room = lookup.lockRoom(request.roomId());
     var facility = lookup.facilityOf(room);
     var now = clock.instant();
-    var cutoff = noShowCutoff(now);
-    bookings.settleNoShows(room.getId(), cutoff, policy.noShowGrace().toSeconds());
+    queue.settle(room.getId(), now);
 
     var zone = ZoneId.of(facility.getTimeZone());
     BookingRules.check(
@@ -75,7 +77,7 @@ public class BookingService {
         now,
         policy);
 
-    if (bookings.roomHasBookingBetween(room.getId(), request.startAt(), request.endAt(), cutoff)) {
+    if (queue.isTaken(room.getId(), request.startAt(), request.endAt(), now)) {
       throw slotTaken(
           facts.canWaitFor(user, room.getId(), request.startAt(), request.endAt(), now));
     }
@@ -88,12 +90,8 @@ public class BookingService {
             request.attendees(),
             request.purpose());
     var saved = insert(bookings, booking);
-    notifier.confirmed(saved);
+    recorder.created(user.getId(), saved);
     return lookup.view(saved, room, facility, now, null);
-  }
-
-  private Instant noShowCutoff(Instant now) {
-    return now.minus(policy.noShowGrace());
   }
 
   /**

@@ -1,6 +1,7 @@
 package dev.ethanyap.slotted.room.web;
 
 import dev.ethanyap.slotted.common.IfMatch;
+import dev.ethanyap.slotted.common.Principals;
 import dev.ethanyap.slotted.facility.application.FacilityAccess;
 import dev.ethanyap.slotted.room.application.RoomService;
 import dev.ethanyap.slotted.room.application.RoomService.RoomDetails;
@@ -20,6 +21,8 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -55,9 +58,12 @@ public class RoomController {
   @PostMapping("/api/v1/facilities/{facilityId}/rooms")
   @PreAuthorize("@facilityAccess.canManage(#facilityId, authentication)")
   public ResponseEntity<RoomResponse> create(
-      @PathVariable UUID facilityId, @Valid @RequestBody RoomInput input) {
+      @AuthenticationPrincipal Jwt jwt,
+      @PathVariable UUID facilityId,
+      @Valid @RequestBody RoomInput input) {
     var room =
         rooms.create(
+            Principals.userId(jwt),
             facilityId,
             new RoomDetails(
                 input.name(), input.type(), input.capacity(), input.maxBookingMinutes()));
@@ -73,12 +79,15 @@ public class RoomController {
   @PatchMapping("/api/v1/rooms/{roomId}")
   @PreAuthorize("@facilityAccess.canManage(@roomService.facilityOf(#roomId), authentication)")
   public RoomResponse update(
+      @AuthenticationPrincipal Jwt jwt,
       @PathVariable UUID roomId,
       @RequestHeader(name = "If-Match", required = false) String ifMatch,
       @Valid @RequestBody RoomPatch patch) {
     var changes =
         new RoomDetails(patch.name(), patch.type(), patch.capacity(), patch.maxBookingMinutes());
-    return RoomResponse.from(rooms.update(roomId, IfMatch.parse(ifMatch), changes, patch.active()));
+    return RoomResponse.from(
+        rooms.update(
+            Principals.userId(jwt), roomId, IfMatch.parse(ifMatch), changes, patch.active()));
   }
 
   /** A printable QR code; only the room's managers may see it, as it holds the secret token. */
@@ -93,8 +102,9 @@ public class RoomController {
 
   @PostMapping("/api/v1/rooms/{roomId}/check-in-token/rotate")
   @PreAuthorize("@facilityAccess.canManage(@roomService.facilityOf(#roomId), authentication)")
-  public ResponseEntity<Void> rotateCheckInToken(@PathVariable UUID roomId) {
-    rooms.rotateCheckInToken(roomId);
+  public ResponseEntity<Void> rotateCheckInToken(
+      @AuthenticationPrincipal Jwt jwt, @PathVariable UUID roomId) {
+    rooms.rotateCheckInToken(Principals.userId(jwt), roomId);
     return ResponseEntity.noContent().build();
   }
 

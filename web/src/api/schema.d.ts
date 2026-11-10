@@ -629,7 +629,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Search the audit log (AD-3) */
+        /**
+         * Search the audit log (AD-3)
+         * @description Every change to a booking, waitlist entry, room, facility, opening hours, blackout or user is
+         *     recorded in the same transaction as the change (BR-32). Records cannot be edited and are
+         *     deleted by the sweep after 180 days (BR-33). Filters combine; `from` is inclusive and `to`
+         *     exclusive.
+         */
         get: operations["listAuditLog"];
         put?: never;
         post?: never;
@@ -648,7 +654,9 @@ export interface paths {
         };
         /**
          * Room utilisation and attendance for a period (AD-4)
-         * @description Managers only see facilities they manage. The period is at most 92 days.
+         * @description One facility, or every facility the caller may see when `facilityId` is left out. Managers
+         *     only see facilities they manage; asking for another one is `403`. The period is at most 92
+         *     days. Inactive rooms are left out unless they had bookings in the period.
          */
         get: operations["getUtilisation"];
         put?: never;
@@ -1036,23 +1044,36 @@ export interface components {
             occurredAt: string;
             /**
              * Format: uuid
-             * @description Null for system actions
+             * @description Null for system actions (no-show release, waitlist promotion, the sweep)
              */
-            actorId?: string | null;
-            actorName?: string;
-            /** @example BOOKING_CANCELLED */
-            action: string;
-            entityType: string;
-            /** Format: uuid */
+            actorId: string | null;
+            /** @description "System" for system actions */
+            actorName: string | null;
+            /** @enum {string} */
+            action: "BOOKING_CREATED" | "BOOKING_PROMOTED" | "BOOKING_CANCELLED" | "BOOKING_CHECKED_IN" | "BOOKING_ENDED_EARLY" | "BOOKING_NO_SHOW" | "WAITLIST_JOINED" | "WAITLIST_LEFT" | "WAITLIST_PROMOTED" | "WAITLIST_EXPIRED" | "WAITLIST_CANCELLED" | "ROOM_CREATED" | "ROOM_UPDATED" | "ROOM_QR_ROTATED" | "FACILITY_CREATED" | "FACILITY_UPDATED" | "FACILITY_MANAGERS_CHANGED" | "OPENING_HOURS_CHANGED" | "BLACKOUT_CREATED" | "BLACKOUT_DELETED" | "USER_REGISTERED" | "USER_CREATED" | "USER_UPDATED";
+            /** @enum {string} */
+            entityType: "BOOKING" | "WAITLIST_ENTRY" | "ROOM" | "FACILITY" | "OPENING_HOURS" | "BLACKOUT" | "USER";
+            /**
+             * Format: uuid
+             * @description For OPENING_HOURS, the facility's ID
+             */
             entityId: string;
-            before?: Record<string, never> | null;
-            after?: Record<string, never> | null;
-            requestId?: string | null;
+            /** @description Values before the change; null when something was created */
+            before: Record<string, never> | null;
+            /** @description Values after the change; null when something was deleted */
+            after: Record<string, never> | null;
+            /** @description The X-Request-Id of the request that made the change; null for the sweep */
+            requestId: string | null;
         };
         AuditPage: {
             items: components["schemas"]["AuditRecord"][];
             page: components["schemas"]["PageMeta"];
         };
+        /**
+         * @description Time is counted in 30-minute cells. Open time is opening hours less blackouts. Booked time is
+         *     time held by a booking that is checked in, or confirmed and not yet a no-show, so no-shows
+         *     and cancelled bookings do not count as use.
+         */
         UtilisationReport: {
             /** Format: date */
             fromDate: string;
@@ -1062,18 +1083,27 @@ export interface components {
                 /** Format: uuid */
                 roomId: string;
                 roomName: string;
+                /** Format: uuid */
+                facilityId: string;
+                facilityName: string;
                 openHours: number;
                 bookedHours: number;
                 /** @description bookedHours / openHours, excluding blackouts */
                 utilisation: number;
+                /** @description Bookings starting in the period that were not cancelled */
                 bookings: number;
+                /** @description Of the bookings that have started, the share that were checked in */
                 checkInRate: number;
+                /** @description Of the bookings that have started, the share that were no-shows */
                 noShowRate: number;
+                /** @description Bookings starting in the period that were cancelled */
                 cancellations: number;
+                /** @description Of those, cancelled within the late-cancellation period (BR-13) */
                 lateCancellations: number;
             }[];
-            /** @description Utilisation by weekday and hour, all rooms combined */
+            /** @description Utilisation by weekday and hour, all rooms combined; only hours that were open */
             heatmap: {
+                /** @description 1 is Monday */
                 dayOfWeek: number;
                 hour: number;
                 utilisation: number;
@@ -2266,6 +2296,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuditPage"];
                 };
             };
+            400: components["responses"]["ValidationFailed"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
         };
@@ -2296,6 +2327,7 @@ export interface operations {
             400: components["responses"]["ValidationFailed"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     runMaintenanceSweep: {

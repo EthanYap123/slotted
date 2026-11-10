@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
 /**
@@ -64,14 +63,29 @@ public interface WaitlistRepository extends JpaRepository<WaitlistEntry, UUID> {
   List<WaitlistEntry> findWaitingInRoomsBetween(
       Collection<UUID> roomIds, Instant from, Instant to, Instant now);
 
-  /** Records the expiry of waiting entries whose slot has started (BR-28). */
-  @Modifying(flushAutomatically = true)
+  /**
+   * Records the expiry of waiting entries whose slot has started (BR-28). Returns each entry and
+   * its room, for the audit log.
+   */
   @Query(
-      "update WaitlistEntry e set e.status = dev.ethanyap.slotted.booking.domain.WaitlistStatus.EXPIRED,"
-          + " e.resolvedAt = :now"
-          + " where e.status = dev.ethanyap.slotted.booking.domain.WaitlistStatus.WAITING"
-          + " and e.startAt <= :now")
-  int expireStarted(Instant now);
+      value =
+          """
+          UPDATE waitlist_entry
+             SET status = 'EXPIRED',
+                 resolved_at = :now
+           WHERE status = 'WAITING'
+             AND start_at <= :now
+          RETURNING id AS "id", room_id AS "roomId"
+          """,
+      nativeQuery = true)
+  List<ExpiredEntry> expireStarted(Instant now);
+
+  /** An entry the sweep marked as expired. */
+  interface ExpiredEntry {
+    UUID getId();
+
+    UUID getRoomId();
+  }
 
   /** The room an entry is in, read without loading the entry, so it can be locked first. */
   @Query("select e.roomId from WaitlistEntry e where e.id = :id")

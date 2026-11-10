@@ -1,11 +1,11 @@
 package dev.ethanyap.slotted.booking.application;
 
+import dev.ethanyap.slotted.audit.domain.AuditAction;
 import dev.ethanyap.slotted.booking.domain.Booking;
 import dev.ethanyap.slotted.booking.domain.BookingPolicy;
 import dev.ethanyap.slotted.booking.domain.BookingRules;
 import dev.ethanyap.slotted.booking.domain.WaitlistEntry;
 import dev.ethanyap.slotted.booking.domain.WaitlistStatus;
-import dev.ethanyap.slotted.booking.infrastructure.BookingRepository;
 import dev.ethanyap.slotted.booking.infrastructure.WaitlistRepository;
 import dev.ethanyap.slotted.common.ApiException;
 import dev.ethanyap.slotted.common.ErrorCode;
@@ -26,26 +26,26 @@ import org.springframework.transaction.annotation.Transactional;
 public class WaitlistService {
 
   private final WaitlistRepository waitlist;
-  private final BookingRepository bookings;
   private final BookingLookup lookup;
   private final BookerFactsReader facts;
   private final WaitlistQueue queue;
+  private final BookingRecorder recorder;
   private final BookingPolicy policy;
   private final Clock clock;
 
   WaitlistService(
       WaitlistRepository waitlist,
-      BookingRepository bookings,
       BookingLookup lookup,
       BookerFactsReader facts,
       WaitlistQueue queue,
+      BookingRecorder recorder,
       BookingPolicy policy,
       Clock clock) {
     this.waitlist = waitlist;
-    this.bookings = bookings;
     this.lookup = lookup;
     this.facts = facts;
     this.queue = queue;
+    this.recorder = recorder;
     this.policy = policy;
     this.clock = clock;
   }
@@ -79,8 +79,7 @@ public class WaitlistService {
             now),
         now,
         policy);
-    if (!bookings.roomHasBookingBetween(
-        room.getId(), start, end, now.minus(policy.noShowGrace()))) {
+    if (!queue.isTaken(room.getId(), start, end, now)) {
       throw new ApiException(ErrorCode.SLOT_AVAILABLE, "This slot is free, so you can book it.");
     }
     if (waitlist.isWaitingFor(userId, room.getId(), start, end, now)) {
@@ -95,6 +94,7 @@ public class WaitlistService {
     var joinedAt = now.truncatedTo(ChronoUnit.MICROS);
     var entry =
         waitlist.saveAndFlush(new WaitlistEntry(room.getId(), userId, start, end, joinedAt));
+    recorder.joined(entry);
     return viewOf(entry, room.getName(), now);
   }
 
@@ -126,7 +126,7 @@ public class WaitlistService {
             .filter(e -> e.getUserId().equals(userId))
             .filter(e -> e.isWaitingAt(now))
             .orElseThrow(WaitlistService::notFound);
-    entry.markCancelled(now);
+    recorder.change(userId, AuditAction.WAITLIST_LEFT, entry, e -> e.markCancelled(now));
   }
 
   private WaitlistView viewOf(WaitlistEntry entry, String roomName, Instant now) {

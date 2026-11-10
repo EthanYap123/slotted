@@ -8,6 +8,8 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -77,6 +79,19 @@ public class WaitlistEntry {
   public void markCancelled(Instant now) {
     status = WaitlistStatus.CANCELLED;
     resolvedAt = now;
+  }
+
+  /** The values the audit log keeps for an entry (BR-32). */
+  public Map<String, Object> auditState() {
+    var state = new LinkedHashMap<String, Object>();
+    state.put("roomId", roomId);
+    state.put("userId", userId);
+    state.put("startAt", startAt);
+    state.put("endAt", endAt);
+    state.put("status", status);
+    state.put("promotedBookingId", promotedBookingId);
+    state.put("resolvedAt", resolvedAt);
+    return state;
   }
 
   public UUID getId() {

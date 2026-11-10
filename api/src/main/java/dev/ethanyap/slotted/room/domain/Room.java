@@ -12,6 +12,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
@@ -110,6 +112,21 @@ public class Room {
 
   private static ApiException invalid(String detail) {
     return new ApiException(ErrorCode.VALIDATION_FAILED, detail);
+  }
+
+  /**
+   * The values the audit log keeps for a room (BR-32). The check-in token is a secret, so it is
+   * left out.
+   */
+  public Map<String, Object> auditState() {
+    var state = new LinkedHashMap<String, Object>();
+    state.put("facilityId", facilityId);
+    state.put("name", name);
+    state.put("type", type);
+    state.put("capacity", capacity);
+    state.put("maxBookingMinutes", maxBookingMinutes);
+    state.put("active", active);
+    return state;
   }
 
   public UUID getId() {

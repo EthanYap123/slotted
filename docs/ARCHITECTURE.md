@@ -99,9 +99,9 @@ user/         users, roles, suspension
 facility/     facilities, opening hours, managers
 room/         rooms, check-in tokens and QR codes
 booking/      bookings, availability, settle step, check-in, series, blackouts, waitlist
-audit/        audit log writer and queries
+audit/        audit log writer, search and retention (ADR-0008)
 notification/ email outbox, templates, dispatcher, EmailSender
-analytics/    utilisation queries
+analytics/    utilisation and attendance report (AD-4)
 maintenance/  sweep endpoint
 common/       errors, clock, time zone helpers, pagination
 ```
@@ -286,7 +286,7 @@ flowchart LR
 | Errors | One `@RestControllerAdvice` producing RFC 9457 problem details with `code` and `requestId` |
 | Time | `timestamptz` and `Instant` everywhere, rules in Asia/Singapore via injected `Clock` ([ADR-0003](adr/0003-timezone-handling.md)) |
 | Concurrency | Exclusion constraint for rooms (the guarantee), room and per-student row locks taken in a fixed order (ADR-0006), also taken by blackouts and opening-hour changes so they cannot miss a booking in progress, optimistic `version` for edits |
-| Audit | Written by services in the same transaction as the change |
+| Audit | Written by services in the same transaction as the change; booking changes go through `BookingRecorder`, which records the change and queues its email together ([ADR-0008](adr/0008-record-audit-changes-in-the-services.md)) |
 | Email | Transactional outbox, dispatched after commit and retried by the sweep |
 | Logging | JSON logs with `requestId`, user ID and route; no personal data beyond IDs |
 | Monitoring | Sentry for API and web errors (expected 4xx not reported), Actuator health |

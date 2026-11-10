@@ -2,6 +2,7 @@ package dev.ethanyap.slotted.facility.web;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import dev.ethanyap.slotted.common.IfMatch;
+import dev.ethanyap.slotted.common.Principals;
 import dev.ethanyap.slotted.facility.application.FacilityService;
 import dev.ethanyap.slotted.facility.application.FacilityService.FacilityChanges;
 import dev.ethanyap.slotted.facility.domain.Facility;
@@ -19,6 +20,8 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -56,8 +59,11 @@ public class FacilityController {
 
   @PostMapping
   @PreAuthorize("@facilityAccess.isAdmin(authentication)")
-  public ResponseEntity<FacilityResponse> create(@Valid @RequestBody FacilityInput input) {
-    var facility = facilities.create(input.name(), input.description(), input.location());
+  public ResponseEntity<FacilityResponse> create(
+      @AuthenticationPrincipal Jwt jwt, @Valid @RequestBody FacilityInput input) {
+    var facility =
+        facilities.create(
+            Principals.userId(jwt), input.name(), input.description(), input.location());
     return ResponseEntity.created(URI.create("/api/v1/facilities/" + facility.getId()))
         .body(FacilityResponse.from(facility));
   }
@@ -65,19 +71,23 @@ public class FacilityController {
   @PatchMapping("/{facilityId}")
   @PreAuthorize("@facilityAccess.canManage(#facilityId, authentication)")
   public FacilityResponse update(
+      @AuthenticationPrincipal Jwt jwt,
       @PathVariable UUID facilityId,
       @RequestHeader(name = "If-Match", required = false) String ifMatch,
       @Valid @RequestBody FacilityPatch patch) {
     var changes = new FacilityChanges(patch.name(), patch.description(), patch.location());
-    return FacilityResponse.from(facilities.update(facilityId, IfMatch.parse(ifMatch), changes));
+    return FacilityResponse.from(
+        facilities.update(Principals.userId(jwt), facilityId, IfMatch.parse(ifMatch), changes));
   }
 
   @PutMapping("/{facilityId}/managers")
   @PreAuthorize("@facilityAccess.isAdmin(authentication)")
   @ResponseStatus(HttpStatus.NO_CONTENT)
   public void replaceManagers(
-      @PathVariable UUID facilityId, @Valid @RequestBody ManagersRequest request) {
-    facilities.replaceManagers(facilityId, request.userIds());
+      @AuthenticationPrincipal Jwt jwt,
+      @PathVariable UUID facilityId,
+      @Valid @RequestBody ManagersRequest request) {
+    facilities.replaceManagers(Principals.userId(jwt), facilityId, request.userIds());
   }
 
   /** Schema {@code Facility}. */

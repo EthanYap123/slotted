@@ -5,7 +5,9 @@ import dev.ethanyap.slotted.booking.domain.BookingPolicy;
 import dev.ethanyap.slotted.booking.domain.BookingRules;
 import dev.ethanyap.slotted.booking.domain.WaitlistEntry;
 import dev.ethanyap.slotted.booking.infrastructure.BookingRepository;
+import dev.ethanyap.slotted.booking.infrastructure.BookingRepository.SettledNoShow;
 import dev.ethanyap.slotted.booking.infrastructure.WaitlistRepository;
+import dev.ethanyap.slotted.booking.infrastructure.WaitlistRepository.ExpiredEntry;
 import dev.ethanyap.slotted.common.ApiException;
 import dev.ethanyap.slotted.facility.domain.Facility;
 import dev.ethanyap.slotted.room.domain.Room;
@@ -16,6 +18,7 @@ import java.time.ZoneId;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -38,7 +41,7 @@ public class WaitlistQueue {
   private final BookingRepository bookings;
   private final BookingLookup lookup;
   private final BookerFactsReader facts;
-  private final BookingNotifier notifier;
+  private final BookingRecorder recorder;
   private final BookingPolicy policy;
   private final Clock clock;
 
@@ -47,14 +50,14 @@ public class WaitlistQueue {
       BookingRepository bookings,
       BookingLookup lookup,
       BookerFactsReader facts,
-      BookingNotifier notifier,
+      BookingRecorder recorder,
       BookingPolicy policy,
       Clock clock) {
     this.waitlist = waitlist;
     this.bookings = bookings;
     this.lookup = lookup;
     this.facts = facts;
-    this.notifier = notifier;
+    this.recorder = recorder;
     this.policy = policy;
     this.clock = clock;
   }
@@ -81,18 +84,35 @@ public class WaitlistQueue {
    */
   @Transactional
   public int expireStarted() {
-    return waitlist.expireStarted(clock.instant());
+    var expired = waitlist.expireStarted(clock.instant());
+    recorder.expired(
+        expired.stream()
+            .collect(
+                Collectors.groupingBy(
+                    ExpiredEntry::getRoomId,
+                    Collectors.mapping(ExpiredEntry::getId, Collectors.toList()))));
+    return expired.size();
   }
 
-  /** Writes down the no-shows that time has already made true in this room (ADR-0004). */
+  /**
+   * Writes down the no-shows that time has already made true in this room (ADR-0004). Callers must
+   * hold the room's lock. Returns how many.
+   */
   int settle(UUID roomId, Instant now) {
-    var students =
-        bookings.settleNoShowsReturningUsers(
+    var settled =
+        bookings.settleNoShows(
             roomId, now.minus(policy.noShowGrace()), policy.noShowGrace().toSeconds());
-    if (!students.isEmpty()) {
-      noticeSuspensions(students, now);
+    if (settled.isEmpty()) {
+      return 0;
     }
-    return students.size();
+    recorder.noShows(roomId, settled.stream().map(SettledNoShow::getId).toList());
+    noticeSuspensions(settled.stream().map(SettledNoShow::getUserId).toList(), now);
+    return settled.size();
+  }
+
+  /** Whether a booking holds some of this time in the room, so it can be waited for. */
+  boolean isTaken(UUID roomId, Instant startAt, Instant endAt, Instant now) {
+    return bookings.roomHasBookingBetween(roomId, startAt, endAt, now.minus(policy.noShowGrace()));
   }
 
   /**
@@ -109,7 +129,7 @@ public class WaitlistQueue {
                 users.stream()
                     .filter(u -> u.getId().equals(userId))
                     .findFirst()
-                    .ifPresent(u -> notifier.suspended(u, until, zone)));
+                    .ifPresent(u -> recorder.suspended(u, until, zone)));
   }
 
   /**
@@ -138,8 +158,7 @@ public class WaitlistQueue {
                 bookings,
                 Booking.promoted(
                     room.getId(), entry.getUserId(), entry.getStartAt(), entry.getEndAt()));
-        entry.markPromoted(booking.getId(), now);
-        notifier.promoted(booking);
+        recorder.promoted(entry, booking, now);
         promoted++;
       }
     }
@@ -159,8 +178,7 @@ public class WaitlistQueue {
   }
 
   private boolean isFree(WaitlistEntry entry, Instant now) {
-    return !bookings.roomHasBookingBetween(
-        entry.getRoomId(), entry.getStartAt(), entry.getEndAt(), now.minus(policy.noShowGrace()));
+    return !isTaken(entry.getRoomId(), entry.getStartAt(), entry.getEndAt(), now);
   }
 
   /** The student's quotas and the slot's rules, checked again as they are now (BR-27). */

@@ -10,7 +10,6 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
-import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
 /**
@@ -31,27 +30,8 @@ public interface BookingRepository
 
   /**
    * The settle step: records the no-shows that time has already made true in one room, so the
-   * exclusion constraint stops counting them before a new booking is inserted (ADR-0004).
-   */
-  @Modifying(flushAutomatically = true)
-  @Query(
-      value =
-          """
-          UPDATE booking
-             SET status = 'NO_SHOW',
-                 released_at = start_at + make_interval(secs => :graceSeconds),
-                 updated_at = now(),
-                 version = version + 1
-           WHERE room_id = :roomId
-             AND status = 'CONFIRMED'
-             AND start_at <= :cutoff
-          """,
-      nativeQuery = true)
-  int settleNoShows(UUID roomId, Instant cutoff, long graceSeconds);
-
-  /**
-   * The settle step, telling who the no-shows belong to, so suspensions can be noticed (BR-18). The
-   * same update as {@link #settleNoShows}, returning one user ID per booking settled.
+   * exclusion constraint stops counting them before a new booking is inserted (ADR-0004). Returns
+   * each booking settled and whose it is, for the audit log and for noticing suspensions (BR-18).
    */
   @Query(
       value =
@@ -64,10 +44,10 @@ public interface BookingRepository
            WHERE room_id = :roomId
              AND status = 'CONFIRMED'
              AND start_at <= :cutoff
-          RETURNING user_id
+          RETURNING id AS "id", user_id AS "userId"
           """,
       nativeQuery = true)
-  List<UUID> settleNoShowsReturningUsers(UUID roomId, Instant cutoff, long graceSeconds);
+  List<SettledNoShow> settleNoShows(UUID roomId, Instant cutoff, long graceSeconds);
 
   @Query(
       "select count(b) > 0 from Booking b where b.roomId = :roomId"
@@ -146,6 +126,12 @@ public interface BookingRepository
   List<Booking> findCountingInRoomsBetween(
       Collection<UUID> roomIds, Instant from, Instant to, Instant cutoff);
 
+  /** Every booking in these rooms that overlaps a period, whatever its status (AD-4). */
+  @Query(
+      "select b from Booking b where b.roomId in :roomIds"
+          + " and b.startAt < :to and b.endAt > :from")
+  List<Booking> findInRoomsBetween(Collection<UUID> roomIds, Instant from, Instant to);
+
   /** Upcoming or in progress, soonest first (ST-5). */
   @Query(
       value = "select b from Booking b where b.userId = :userId and b.endAt > :now and " + COUNTS,
@@ -165,6 +151,13 @@ public interface BookingRepository
               + COUNTS
               + ")")
   Page<Booking> findPast(UUID userId, Instant now, Instant cutoff, Pageable pageable);
+
+  /** A booking the settle step marked as a no-show. */
+  interface SettledNoShow {
+    UUID getId();
+
+    UUID getUserId();
+  }
 
   /** A user's no-show, by start time. */
   interface NoShow {

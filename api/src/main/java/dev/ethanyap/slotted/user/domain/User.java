@@ -9,7 +9,9 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
@@ -77,6 +79,18 @@ public class User {
   /** Earlier no-shows stop counting toward a suspension (PRD BR-18). */
   public void liftSuspension(Instant now) {
     this.suspensionClearedAt = now;
+  }
+
+  /**
+   * The values the audit log keeps for a user (BR-32): what decides their access. Passwords and
+   * contact details are left out.
+   */
+  public Map<String, Object> auditState() {
+    var state = new LinkedHashMap<String, Object>();
+    state.put("role", role);
+    state.put("status", status);
+    state.put("suspensionClearedAt", suspensionClearedAt);
+    return state;
   }
 
   public UUID getId() {

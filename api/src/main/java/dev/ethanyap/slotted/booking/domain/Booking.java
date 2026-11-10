@@ -14,6 +14,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
@@ -246,6 +248,27 @@ public class Booking {
           default -> "already over";
         };
     return new ApiException(ErrorCode.NOT_CANCELLABLE, "This booking is " + what + ".");
+  }
+
+  /** The values the audit log keeps for a booking (BR-32). */
+  public Map<String, Object> auditState() {
+    var state = new LinkedHashMap<String, Object>();
+    state.put("roomId", roomId);
+    state.put("userId", userId);
+    state.put("seriesId", seriesId);
+    state.put("startAt", startAt);
+    state.put("endAt", endAt);
+    state.put("status", status);
+    state.put("source", source);
+    state.put("attendees", (int) attendees);
+    state.put("purpose", purpose);
+    state.put("checkedInAt", checkedInAt);
+    state.put("releasedAt", releasedAt);
+    state.put("cancelledAt", cancelledAt);
+    state.put("cancelledBy", cancelledBy);
+    state.put("cancelReason", cancelReason);
+    state.put("lateCancellation", lateCancellation);
+    return state;
   }
 
   public UUID getId() {
