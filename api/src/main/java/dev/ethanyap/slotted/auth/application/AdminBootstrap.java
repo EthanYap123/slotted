@@ -1,5 +1,8 @@
 package dev.ethanyap.slotted.auth.application;
 
+import dev.ethanyap.slotted.audit.application.AuditLog;
+import dev.ethanyap.slotted.audit.domain.AuditAction;
+import dev.ethanyap.slotted.audit.domain.Change;
 import dev.ethanyap.slotted.auth.domain.PasswordPolicy;
 import dev.ethanyap.slotted.auth.infrastructure.BootstrapAdminProperties;
 import dev.ethanyap.slotted.user.domain.Role;
@@ -26,16 +29,19 @@ public class AdminBootstrap {
   private final UserRepository users;
   private final PasswordEncoder passwordEncoder;
   private final PasswordPolicy passwordPolicy;
+  private final AuditLog audit;
 
   public AdminBootstrap(
       BootstrapAdminProperties properties,
       UserRepository users,
       PasswordEncoder passwordEncoder,
-      PasswordPolicy passwordPolicy) {
+      PasswordPolicy passwordPolicy,
+      AuditLog audit) {
     this.properties = properties;
     this.users = users;
     this.passwordEncoder = passwordEncoder;
     this.passwordPolicy = passwordPolicy;
+    this.audit = audit;
   }
 
   @EventListener(ApplicationReadyEvent.class)
@@ -58,7 +64,9 @@ public class AdminBootstrap {
         properties.fullName() == null || properties.fullName().isBlank()
             ? "Administrator"
             : properties.fullName();
-    users.save(User.admin(email, passwordEncoder.encode(password), name));
+    var admin = users.saveAndFlush(User.admin(email, passwordEncoder.encode(password), name));
+    audit.record(
+        new Change(AuditAction.USER_CREATED, admin.getId(), null, null, null, admin.auditState()));
     log.info("Created the first admin account for {}", email);
   }
 }

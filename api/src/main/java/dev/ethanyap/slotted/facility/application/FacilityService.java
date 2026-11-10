@@ -1,5 +1,8 @@
 package dev.ethanyap.slotted.facility.application;
 
+import dev.ethanyap.slotted.audit.application.AuditLog;
+import dev.ethanyap.slotted.audit.domain.AuditAction;
+import dev.ethanyap.slotted.audit.domain.Change;
 import dev.ethanyap.slotted.common.ApiException;
 import dev.ethanyap.slotted.common.ErrorCode;
 import dev.ethanyap.slotted.common.IfMatch;
@@ -10,6 +13,7 @@ import dev.ethanyap.slotted.user.infrastructure.UserRepository;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Sort;
@@ -22,10 +26,12 @@ public class FacilityService {
 
   private final FacilityRepository facilities;
   private final UserRepository users;
+  private final AuditLog audit;
 
-  public FacilityService(FacilityRepository facilities, UserRepository users) {
+  public FacilityService(FacilityRepository facilities, UserRepository users, AuditLog audit) {
     this.facilities = facilities;
     this.users = users;
+    this.audit = audit;
   }
 
   @Transactional(readOnly = true)
@@ -41,18 +47,22 @@ public class FacilityService {
   }
 
   @Transactional
-  public Facility create(String name, String description, String location) {
+  public Facility create(UUID actorId, String name, String description, String location) {
     var facility = new Facility(name, description, location);
     if (facilities.existsByNameIgnoreCase(facility.getName())) {
       throw nameTaken();
     }
-    return saveUniquely(facility);
+    var saved = saveUniquely(facility);
+    record(AuditAction.FACILITY_CREATED, actorId, saved, null);
+    return saved;
   }
 
   @Transactional
-  public Facility update(UUID facilityId, Long expectedVersion, FacilityChanges changes) {
+  public Facility update(
+      UUID actorId, UUID facilityId, Long expectedVersion, FacilityChanges changes) {
     var facility = get(facilityId);
     IfMatch.check(expectedVersion, facility.getVersion());
+    var before = facility.auditState();
     if (changes.name() != null) {
       facility.rename(changes.name());
       if (facilities.existsByNameIgnoreCaseAndIdNot(facility.getName(), facilityId)) {
@@ -65,12 +75,14 @@ public class FacilityService {
     if (changes.location() != null) {
       facility.changeLocation(changes.location());
     }
-    return saveUniquely(facility);
+    var saved = saveUniquely(facility);
+    record(AuditAction.FACILITY_UPDATED, actorId, saved, before);
+    return saved;
   }
 
   /** Sets who manages the facility. Every user must exist and have the Manager role. */
   @Transactional
-  public void replaceManagers(UUID facilityId, Collection<UUID> userIds) {
+  public void replaceManagers(UUID actorId, UUID facilityId, Collection<UUID> userIds) {
     var facility = get(facilityId);
     var ids = new HashSet<>(userIds);
     var found = users.findAllById(ids);
@@ -84,7 +96,20 @@ public class FacilityService {
             user.getEmail() + " is not a manager. Change their role to Manager first.");
       }
     }
+    var before = facility.auditState();
     facility.replaceManagers(ids);
+    record(AuditAction.FACILITY_MANAGERS_CHANGED, actorId, facility, before);
+  }
+
+  /** Records a change to a facility, unless it changed nothing (BR-32). */
+  private void record(
+      AuditAction action, UUID actorId, Facility facility, Map<String, Object> before) {
+    var change =
+        new Change(
+            action, facility.getId(), facility.getId(), actorId, before, facility.auditState());
+    if (change.changesSomething()) {
+      audit.record(change);
+    }
   }
 
   private Facility saveUniquely(Facility facility) {

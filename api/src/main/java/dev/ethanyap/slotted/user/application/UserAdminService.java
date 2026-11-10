@@ -1,5 +1,8 @@
 package dev.ethanyap.slotted.user.application;
 
+import dev.ethanyap.slotted.audit.application.AuditLog;
+import dev.ethanyap.slotted.audit.domain.AuditAction;
+import dev.ethanyap.slotted.audit.domain.Change;
 import dev.ethanyap.slotted.common.ApiException;
 import dev.ethanyap.slotted.common.ErrorCode;
 import dev.ethanyap.slotted.user.domain.Role;
@@ -22,11 +25,14 @@ public class UserAdminService {
 
   private final UserRepository users;
   private final ApplicationEventPublisher events;
+  private final AuditLog audit;
   private final Clock clock;
 
-  public UserAdminService(UserRepository users, ApplicationEventPublisher events, Clock clock) {
+  public UserAdminService(
+      UserRepository users, ApplicationEventPublisher events, AuditLog audit, Clock clock) {
     this.users = users;
     this.events = events;
+    this.audit = audit;
     this.clock = clock;
   }
 
@@ -52,6 +58,7 @@ public class UserAdminService {
           ErrorCode.LAST_ADMIN,
           "Ask another admin to change your role or status, so there is always an admin.");
     }
+    var before = user.auditState();
     var accessChanged = false;
     if (changes.role() != null && changes.role() != user.getRole()) {
       user.changeRole(changes.role());
@@ -63,6 +70,12 @@ public class UserAdminService {
     }
     if (changes.liftSuspension()) {
       user.liftSuspension(clock.instant());
+    }
+    var change =
+        new Change(
+            AuditAction.USER_UPDATED, user.getId(), null, actorId, before, user.auditState());
+    if (change.changesSomething()) {
+      audit.record(change);
     }
     if (accessChanged) {
       events.publishEvent(new UserAccessChanged(user.getId()));

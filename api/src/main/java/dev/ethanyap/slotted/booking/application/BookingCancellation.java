@@ -24,7 +24,7 @@ public class BookingCancellation {
   private final BookingLookup lookup;
   private final BookingQueries queries;
   private final WaitlistQueue queue;
-  private final BookingNotifier notifier;
+  private final BookingRecorder recorder;
   private final BookingPolicy policy;
   private final Clock clock;
 
@@ -33,14 +33,14 @@ public class BookingCancellation {
       BookingLookup lookup,
       BookingQueries queries,
       WaitlistQueue queue,
-      BookingNotifier notifier,
+      BookingRecorder recorder,
       BookingPolicy policy,
       Clock clock) {
     this.bookings = bookings;
     this.lookup = lookup;
     this.queries = queries;
     this.queue = queue;
-    this.notifier = notifier;
+    this.recorder = recorder;
     this.policy = policy;
     this.clock = clock;
   }
@@ -58,11 +58,10 @@ public class BookingCancellation {
     queue.settle(roomId, now);
     var booking = bookings.findById(bookingId).orElseThrow(BookingCancellation::bookingNotFound);
     if (booking.getUserId().equals(actorId)) {
-      booking.cancelByOwner(now, policy, reason);
-      notifier.cancelled(List.of(booking), null);
+      recorder.cancel(actorId, List.of(booking), b -> b.cancelByOwner(now, policy, reason), null);
     } else if (queries.canManage(room.getFacilityId(), actorId)) {
-      booking.cancelByStaff(actorId, now, policy, reason);
-      notifier.cancelled(List.of(booking), reason);
+      recorder.cancel(
+          actorId, List.of(booking), b -> b.cancelByStaff(actorId, now, policy, reason), reason);
     } else {
       throw bookingNotFound();
     }
@@ -95,14 +94,12 @@ public class BookingCancellation {
       throw new ApiException(
           ErrorCode.NOT_CANCELLABLE, "No bookings in this series can be cancelled from that date.");
     }
-    for (var booking : toCancel) {
-      if (owner) {
-        booking.cancelByOwner(now, policy, reason);
-      } else {
-        booking.cancelByStaff(actorId, now, policy, reason);
-      }
+    if (owner) {
+      recorder.cancel(actorId, toCancel, b -> b.cancelByOwner(now, policy, reason), null);
+    } else {
+      recorder.cancel(
+          actorId, toCancel, b -> b.cancelByStaff(actorId, now, policy, reason), reason);
     }
-    notifier.cancelled(toCancel, owner ? null : reason);
     var anyLeft =
         bookings.findBySeriesIdOrderByStartAt(cancelling.getId()).stream()
             .anyMatch(b -> b.getStartAt().isAfter(now) && b.getStatus().isActive());

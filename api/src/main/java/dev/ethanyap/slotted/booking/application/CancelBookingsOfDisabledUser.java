@@ -1,5 +1,6 @@
 package dev.ethanyap.slotted.booking.application;
 
+import dev.ethanyap.slotted.audit.domain.AuditAction;
 import dev.ethanyap.slotted.booking.domain.Booking;
 import dev.ethanyap.slotted.booking.domain.BookingPolicy;
 import dev.ethanyap.slotted.booking.infrastructure.BookingRepository;
@@ -22,7 +23,7 @@ public class CancelBookingsOfDisabledUser {
 
   private final BookingRepository bookings;
   private final WaitlistRepository waitlist;
-  private final BookingNotifier notifier;
+  private final BookingRecorder recorder;
   private final BookingLookup lookup;
   private final WaitlistQueue queue;
   private final BookingPolicy policy;
@@ -31,14 +32,14 @@ public class CancelBookingsOfDisabledUser {
   CancelBookingsOfDisabledUser(
       BookingRepository bookings,
       WaitlistRepository waitlist,
-      BookingNotifier notifier,
+      BookingRecorder recorder,
       BookingLookup lookup,
       WaitlistQueue queue,
       BookingPolicy policy,
       Clock clock) {
     this.bookings = bookings;
     this.waitlist = waitlist;
-    this.notifier = notifier;
+    this.recorder = recorder;
     this.lookup = lookup;
     this.queue = queue;
     this.policy = policy;
@@ -54,7 +55,12 @@ public class CancelBookingsOfDisabledUser {
       return;
     }
     var now = clock.instant();
-    waitlist.findWaitingByUser(event.userId(), now).forEach(entry -> entry.markCancelled(now));
+    waitlist
+        .findWaitingByUser(event.userId(), now)
+        .forEach(
+            entry ->
+                recorder.change(
+                    null, AuditAction.WAITLIST_CANCELLED, entry, e -> e.markCancelled(now)));
     var upcoming = bookings.findUpcoming(event.userId(), now);
     // In ID order, so two callers cannot lock the same rooms in opposite orders.
     var rooms =
@@ -64,8 +70,7 @@ public class CancelBookingsOfDisabledUser {
             .sorted()
             .map(lookup::lockRoom)
             .toList();
-    upcoming.forEach(booking -> booking.cancelBySystem(now, policy, REASON));
-    notifier.cancelled(upcoming, REASON);
+    recorder.cancel(null, upcoming, b -> b.cancelBySystem(now, policy, REASON), REASON);
     rooms.forEach(room -> queue.promoteIn(room, now));
   }
 }

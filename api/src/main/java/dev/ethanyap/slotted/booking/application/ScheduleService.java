@@ -1,9 +1,11 @@
 package dev.ethanyap.slotted.booking.application;
 
+import dev.ethanyap.slotted.audit.domain.AuditAction;
 import dev.ethanyap.slotted.booking.domain.Blackout;
 import dev.ethanyap.slotted.booking.domain.Booking;
 import dev.ethanyap.slotted.booking.domain.BookingPolicy;
 import dev.ethanyap.slotted.booking.domain.BookingRules;
+import dev.ethanyap.slotted.booking.domain.WaitlistEntry;
 import dev.ethanyap.slotted.booking.infrastructure.BlackoutRepository;
 import dev.ethanyap.slotted.booking.infrastructure.BookingRepository;
 import dev.ethanyap.slotted.common.ApiException;
@@ -38,7 +40,7 @@ public class ScheduleService {
   private final BlackoutRepository blackouts;
   private final BookingRepository bookings;
   private final BookingLookup lookup;
-  private final BookingNotifier notifier;
+  private final BookingRecorder recorder;
   private final WaitlistQueue queue;
   private final BookingPolicy policy;
   private final Clock clock;
@@ -47,14 +49,14 @@ public class ScheduleService {
       BlackoutRepository blackouts,
       BookingRepository bookings,
       BookingLookup lookup,
-      BookingNotifier notifier,
+      BookingRecorder recorder,
       WaitlistQueue queue,
       BookingPolicy policy,
       Clock clock) {
     this.blackouts = blackouts;
     this.bookings = bookings;
     this.lookup = lookup;
-    this.notifier = notifier;
+    this.recorder = recorder;
     this.queue = queue;
     this.policy = policy;
     this.clock = clock;
@@ -80,10 +82,13 @@ public class ScheduleService {
             .filter(e -> !fits(e.getStartAt(), e.getEndAt(), periods, zone))
             .toList();
     if (!dryRun) {
-      affected.forEach(b -> b.cancelByStaff(actorId, now, policy, HOURS_CHANGED));
-      notifier.cancelled(affected, HOURS_CHANGED);
-      entries.forEach(e -> e.markExpired(now));
-      facility.replaceOpeningHours(periods);
+      recorder.cancel(
+          actorId,
+          affected,
+          b -> b.cancelByStaff(actorId, now, policy, HOURS_CHANGED),
+          HOURS_CHANGED);
+      expire(actorId, entries, now);
+      recorder.openingHoursChanged(actorId, facility, f -> f.replaceOpeningHours(periods));
       rooms.forEach(room -> queue.promoteIn(room, now));
     }
     return new Impact(!dryRun, views, entries.size());
@@ -125,10 +130,11 @@ public class ScheduleService {
     if (dryRun) {
       return new BlackoutOutcome(null, new Impact(false, views, entries.size()));
     }
-    affected.forEach(b -> b.cancelByStaff(actorId, now, policy, blackout.getReason()));
-    notifier.cancelled(affected, blackout.getReason());
-    entries.forEach(e -> e.markExpired(now));
+    var reason = blackout.getReason();
+    recorder.cancel(actorId, affected, b -> b.cancelByStaff(actorId, now, policy, reason), reason);
+    expire(actorId, entries, now);
     var created = blackouts.saveAndFlush(blackout);
+    recorder.blackoutCreated(actorId, created);
     // A cancelled booking can reach past the blackout, freeing time someone else is waiting for.
     inScope.forEach(room -> queue.promoteIn(room, now));
     return new BlackoutOutcome(created, new Impact(true, views, entries.size()));
@@ -144,7 +150,7 @@ public class ScheduleService {
 
   /** Removes a blackout that has not ended. Bookings it cancelled stay cancelled (MG-3). */
   @Transactional
-  public void deleteBlackout(UUID blackoutId) {
+  public void deleteBlackout(UUID actorId, UUID blackoutId) {
     var blackout =
         blackouts
             .findById(blackoutId)
@@ -153,12 +159,19 @@ public class ScheduleService {
       throw new ApiException(ErrorCode.BLACKOUT_ENDED, "A past blackout cannot be removed.");
     }
     blackouts.delete(blackout);
+    recorder.blackoutDeleted(actorId, blackout);
   }
 
   /** The facility a blackout belongs to, for access checks; null if it does not exist. */
   @Transactional(readOnly = true)
   public UUID facilityOfBlackout(UUID blackoutId) {
     return blackouts.findById(blackoutId).map(Blackout::getFacilityId).orElse(null);
+  }
+
+  /** Waiting entries a change has ruled out are expired by whoever made the change (BR-31). */
+  private void expire(UUID actorId, List<WaitlistEntry> entries, Instant now) {
+    entries.forEach(
+        e -> recorder.change(actorId, AuditAction.WAITLIST_EXPIRED, e, x -> x.markExpired(now)));
   }
 
   private List<Booking> counting(List<Room> rooms, Instant from, Instant to, Instant now) {

@@ -1,5 +1,8 @@
 package dev.ethanyap.slotted.auth.application;
 
+import dev.ethanyap.slotted.audit.application.AuditLog;
+import dev.ethanyap.slotted.audit.domain.AuditAction;
+import dev.ethanyap.slotted.audit.domain.Change;
 import dev.ethanyap.slotted.auth.domain.PasswordPolicy;
 import dev.ethanyap.slotted.auth.domain.RefreshToken;
 import dev.ethanyap.slotted.auth.infrastructure.RefreshTokenRepository;
@@ -23,6 +26,7 @@ public class AuthService {
   private final PasswordEncoder passwordEncoder;
   private final PasswordPolicy passwordPolicy;
   private final TokenService tokens;
+  private final AuditLog audit;
   private final Clock clock;
 
   /** Compared against when the email is unknown, so both failures take the same time. */
@@ -34,12 +38,14 @@ public class AuthService {
       PasswordEncoder passwordEncoder,
       PasswordPolicy passwordPolicy,
       TokenService tokens,
+      AuditLog audit,
       Clock clock) {
     this.users = users;
     this.refreshTokens = refreshTokens;
     this.passwordEncoder = passwordEncoder;
     this.passwordPolicy = passwordPolicy;
     this.tokens = tokens;
+    this.audit = audit;
     this.clock = clock;
     this.timingDummyHash = passwordEncoder.encode(UUID.randomUUID().toString());
   }
@@ -64,6 +70,14 @@ public class AuthService {
       // Another request registered the same email between the check and the insert.
       throw new ApiException(ErrorCode.EMAIL_TAKEN);
     }
+    audit.record(
+        new Change(
+            AuditAction.USER_REGISTERED,
+            user.getId(),
+            null,
+            user.getId(),
+            null,
+            user.auditState()));
     return signIn(user, UUID.randomUUID());
   }
 

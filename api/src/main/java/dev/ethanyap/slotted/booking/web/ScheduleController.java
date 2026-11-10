@@ -96,8 +96,8 @@ public class ScheduleController {
   @PreAuthorize(
       "@facilityAccess.canManage(@scheduleService.facilityOfBlackout(#blackoutId), authentication)")
   @ResponseStatus(HttpStatus.NO_CONTENT)
-  public void deleteBlackout(@PathVariable UUID blackoutId) {
-    schedule.deleteBlackout(blackoutId);
+  public void deleteBlackout(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID blackoutId) {
+    schedule.deleteBlackout(Principals.userId(jwt), blackoutId);
   }
 
   private static Instant instant(OffsetDateTime time) {

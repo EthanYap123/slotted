@@ -15,10 +15,13 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.time.DayOfWeek;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.hibernate.annotations.CreationTimestamp;
@@ -110,6 +113,29 @@ public class Facility {
 
   private static String blankToNull(String value) {
     return value == null || value.isBlank() ? null : value.strip();
+  }
+
+  /** The values the audit log keeps for a facility (BR-32); opening hours are kept apart. */
+  public Map<String, Object> auditState() {
+    var state = new LinkedHashMap<String, Object>();
+    state.put("name", name);
+    state.put("description", description);
+    state.put("location", location);
+    state.put("managerIds", managerIds.stream().sorted().toList());
+    return state;
+  }
+
+  /** The weekly opening hours as the audit log keeps them, Monday first. */
+  public Map<String, Object> openingHoursAuditState() {
+    var days = new ArrayList<Map<String, Object>>();
+    for (var period : getOpeningHours()) {
+      var day = new LinkedHashMap<String, Object>();
+      day.put("dayOfWeek", period.dayOfWeek());
+      day.put("opensAt", period.opensAt());
+      day.put("closesAt", period.closesAt());
+      days.add(day);
+    }
+    return Map.of("days", days);
   }
 
   public UUID getId() {

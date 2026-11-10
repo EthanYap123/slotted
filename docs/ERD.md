@@ -185,10 +185,10 @@ erDiagram
 | `booking_series` | Groups the occurrences of a recurring booking. Each occurrence is a normal `booking` row, so every booking rule and the exclusion constraint apply to occurrences too. |
 | `booking` | One booking. Stored `status` is what was last written; effective status (no-show, finished) is derived at read time ([ADR-0004](adr/0004-lazy-evaluation-of-time-based-rules.md)). Ending a checked-in booking early (BR-15) moves `end_at` to the next 30-minute boundary and sets `released_at`, so the freed time stops being covered by the exclusion constraint; the original end time stays in the audit log. |
 | `waitlist_entry` | A student waiting for an exact slot. Queue order is `created_at`, then `id`. |
-| `audit_log` | Append-only history of every change (BR-32). |
+| `audit_log` | Append-only history of every change (BR-32), written in the same transaction as the change ([ADR-0008](adr/0008-record-audit-changes-in-the-services.md)). `before` and `after` hold the values that matter, never secrets such as check-in tokens or password hashes. A trigger refuses updates. |
 | `email_outbox` | Emails written in the same transaction as the change, sent after commit and retried by the sweep (5 tries). Text is written when queued. `dedupe_key`, unique when set, sends some emails (suspension notices) only once. |
 
-Utilisation analytics (AD-4) are computed from `booking`, `opening_hours` and `blackout` by query; there is no separate analytics table at this scale.
+Utilisation analytics (AD-4) are computed from `booking`, `opening_hours` and `blackout` when asked for, in 30-minute cells, for at most 92 days at a time; there is no separate analytics table at this scale.
 
 ## Key constraints
 
@@ -254,6 +254,9 @@ ALTER TABLE blackout ADD CONSTRAINT blackout_room_in_facility
 CREATE INDEX blackout_period ON blackout USING gist (facility_id, period);
 CREATE INDEX audit_entity ON audit_log (entity_type, entity_id, occurred_at);
 CREATE INDEX audit_facility_time ON audit_log (facility_id, occurred_at);
+CREATE INDEX audit_actor_time ON audit_log (actor_id, occurred_at);
+CREATE INDEX audit_time ON audit_log (occurred_at);
+-- audit_log refuses UPDATE with a trigger (BR-33); only the sweep deletes old rows
 CREATE INDEX outbox_pending ON email_outbox (next_attempt_at) WHERE status = 'PENDING';
 ```
 

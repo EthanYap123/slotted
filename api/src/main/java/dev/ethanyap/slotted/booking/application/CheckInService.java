@@ -1,5 +1,6 @@
 package dev.ethanyap.slotted.booking.application;
 
+import dev.ethanyap.slotted.audit.domain.AuditAction;
 import dev.ethanyap.slotted.booking.domain.Booking;
 import dev.ethanyap.slotted.booking.domain.BookingPolicy;
 import dev.ethanyap.slotted.booking.domain.BookingStatus;
@@ -28,6 +29,7 @@ public class CheckInService {
   private final BookingRepository bookings;
   private final BookingLookup lookup;
   private final WaitlistQueue queue;
+  private final BookingRecorder recorder;
   private final BookingPolicy policy;
   private final Clock clock;
 
@@ -35,11 +37,13 @@ public class CheckInService {
       BookingRepository bookings,
       BookingLookup lookup,
       WaitlistQueue queue,
+      BookingRecorder recorder,
       BookingPolicy policy,
       Clock clock) {
     this.bookings = bookings;
     this.lookup = lookup;
     this.queue = queue;
+    this.recorder = recorder;
     this.policy = policy;
     this.clock = clock;
   }
@@ -74,7 +78,7 @@ public class CheckInService {
             .findFirst();
     if (open.isPresent()) {
       var booking = open.get();
-      booking.checkIn(now, policy);
+      recorder.change(userId, AuditAction.BOOKING_CHECKED_IN, booking, b -> b.checkIn(now, policy));
       return lookup.view(booking, room, facility, now, null);
     }
     if (candidates.stream().anyMatch(b -> !b.getStartAt().isAfter(now))) {
@@ -113,7 +117,9 @@ public class CheckInService {
             .findById(bookingId)
             .filter(b -> b.getUserId().equals(userId))
             .orElseThrow(CheckInService::notFound);
-    booking.endEarly(now, policy, ZoneId.of(facility.getTimeZone()));
+    var zone = ZoneId.of(facility.getTimeZone());
+    recorder.change(
+        userId, AuditAction.BOOKING_ENDED_EARLY, booking, b -> b.endEarly(now, policy, zone));
     queue.promoteIn(room, now);
     return lookup.view(booking, room, facility, now, null);
   }

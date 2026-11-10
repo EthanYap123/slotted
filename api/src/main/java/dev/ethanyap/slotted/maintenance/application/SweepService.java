@@ -1,6 +1,5 @@
 package dev.ethanyap.slotted.maintenance.application;
 
-import dev.ethanyap.slotted.auth.application.ExpiredRefreshTokens;
 import dev.ethanyap.slotted.booking.application.WaitlistQueue;
 import dev.ethanyap.slotted.common.ApiException;
 import dev.ethanyap.slotted.common.ErrorCode;
@@ -23,8 +22,8 @@ import org.springframework.stereotype.Service;
  * The scheduled cleanup (PRD SY-1, ADR-0004). It only writes down what is already true, so the
  * application stays correct whether or not it runs: overdue no-shows are recorded and their time
  * offered to the waitlist, started waitlist entries are marked expired, queued emails that are due
- * are sent, and old refresh tokens and sent emails are deleted. Running it twice in a row does
- * nothing the second time.
+ * are sent, and old refresh tokens, sent emails and audit records are deleted. Running it twice in
+ * a row does nothing the second time.
  */
 @Service
 public class SweepService {
@@ -39,7 +38,7 @@ public class SweepService {
 
   private final RoomRepository rooms;
   private final WaitlistQueue queue;
-  private final ExpiredRefreshTokens refreshTokens;
+  private final OldRecords oldRecords;
   private final EmailDispatcher emails;
   private final JdbcTemplate jdbc;
   private final MaintenanceProperties properties;
@@ -49,14 +48,14 @@ public class SweepService {
   SweepService(
       RoomRepository rooms,
       WaitlistQueue queue,
-      ExpiredRefreshTokens refreshTokens,
+      OldRecords oldRecords,
       EmailDispatcher emails,
       JdbcTemplate jdbc,
       MaintenanceProperties properties,
       Clock clock) {
     this.rooms = rooms;
     this.queue = queue;
-    this.refreshTokens = refreshTokens;
+    this.oldRecords = oldRecords;
     this.emails = emails;
     this.jdbc = jdbc;
     this.properties = properties;
@@ -114,7 +113,7 @@ public class SweepService {
     }
     var expired = queue.expireStarted();
     var delivered = emails.sendDue(MAX_EMAILS_PER_SWEEP);
-    var purged = refreshTokens.purge(properties.refreshTokenRetention()) + emails.purgeFinished();
+    var purged = oldRecords.purge();
     return new SweepResult(
         true,
         noShows,

@@ -8,6 +8,8 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 import org.hibernate.annotations.CreationTimestamp;
 
@@ -56,6 +58,18 @@ public class Blackout {
 
   public boolean covers(UUID room, Instant from, Instant to) {
     return (roomId == null || roomId.equals(room)) && startAt.isBefore(to) && endAt.isAfter(from);
+  }
+
+  /** The values the audit log keeps for a blackout (BR-32). */
+  public Map<String, Object> auditState() {
+    var state = new LinkedHashMap<String, Object>();
+    state.put("facilityId", facilityId);
+    state.put("roomId", roomId);
+    state.put("startAt", startAt);
+    state.put("endAt", endAt);
+    state.put("reason", reason);
+    state.put("createdBy", createdBy);
+    return state;
   }
 
   public UUID getId() {

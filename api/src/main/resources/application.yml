@@ -92,6 +92,9 @@ slotted:
     skip-domains: example.com, example.org, example.net, test, example, invalid, localhost
     web-url: ${WEB_URL:http://localhost:5173}
     retention: 30d
+  audit:
+    # Audit records older than this are deleted by the sweep (PRD BR-33).
+    retention: 180d
   maintenance:
     # Shared secret for the scheduled sweep (ADR-0004). Empty turns the endpoint off.
     key: ${MAINTENANCE_KEY:}
