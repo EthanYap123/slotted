@@ -13,6 +13,10 @@ interface RequestOptions {
   signal?: AbortSignal
   /** Set false for the sign-in endpoints, which do not use the access token. */
   auth?: boolean
+  /** Extra headers, such as `If-Match` with the version last read. */
+  headers?: Record<string, string>
+  /** `text` for responses that are not JSON, such as a QR code's SVG. */
+  responseType?: 'json' | 'text'
 }
 
 export async function request<T>(
@@ -35,7 +39,10 @@ export async function request<T>(
   if (!response.ok) {
     throw await toApiError(response)
   }
-  return response.status === 204 ? (undefined as T) : ((await response.json()) as T)
+  if (response.status === 204) {
+    return undefined as T
+  }
+  return (options.responseType === 'text' ? await response.text() : await response.json()) as T
 }
 
 async function send(
@@ -44,7 +51,7 @@ async function send(
   options: RequestOptions,
   useAuth: boolean,
 ): Promise<Response> {
-  const headers: Record<string, string> = {}
+  const headers: Record<string, string> = { ...options.headers }
   const token = session.accessToken()
   if (useAuth && token) {
     headers.Authorization = `Bearer ${token}`

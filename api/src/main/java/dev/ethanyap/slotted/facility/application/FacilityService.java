@@ -9,8 +9,10 @@ import dev.ethanyap.slotted.common.IfMatch;
 import dev.ethanyap.slotted.facility.domain.Facility;
 import dev.ethanyap.slotted.facility.infrastructure.FacilityRepository;
 import dev.ethanyap.slotted.user.domain.Role;
+import dev.ethanyap.slotted.user.domain.User;
 import dev.ethanyap.slotted.user.infrastructure.UserRepository;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -78,6 +80,15 @@ public class FacilityService {
     var saved = saveUniquely(facility);
     record(AuditAction.FACILITY_UPDATED, actorId, saved, before);
     return saved;
+  }
+
+  /** The facility's managers, sorted by name, so an admin can see who is assigned (AD-2). */
+  @Transactional(readOnly = true)
+  public List<User> managers(UUID facilityId) {
+    var ids = get(facilityId).getManagerIds();
+    return users.findAllById(ids).stream()
+        .sorted(Comparator.comparing(User::getFullName, String.CASE_INSENSITIVE_ORDER))
+        .toList();
   }
 
   /** Sets who manages the facility. Every user must exist and have the Manager role. */

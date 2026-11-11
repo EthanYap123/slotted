@@ -162,7 +162,8 @@ export interface paths {
             };
             cookie?: never;
         };
-        get?: never;
+        /** Who manages this facility, sorted by name */
+        get: operations["listFacilityManagers"];
         /** Set which managers manage this facility */
         put: operations["replaceFacilityManagers"];
         post?: never;
@@ -798,6 +799,13 @@ export interface components {
             name?: string;
             description?: string;
             location?: string;
+        };
+        FacilityManager: {
+            /** Format: uuid */
+            id: string;
+            fullName: string;
+            /** Format: email */
+            email: string;
         };
         OpeningHours: {
             /** @enum {string} */
@@ -1505,6 +1513,31 @@ export interface operations {
                 };
             };
             400: components["responses"]["ValidationFailed"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listFacilityManagers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                facilityId: components["parameters"]["FacilityId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Managers */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FacilityManager"][];
+                };
+            };
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

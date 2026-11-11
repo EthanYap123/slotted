@@ -84,7 +84,32 @@ class FacilitiesIntegrationTest {
           api.put(managersPath(facilityId), Map.of("userIds", List.of(manager.id())), token),
           HttpStatus.FORBIDDEN,
           "FORBIDDEN");
+      assertProblem(api.get(managersPath(facilityId), token), HttpStatus.FORBIDDEN, "FORBIDDEN");
     }
+  }
+
+  @Test
+  void anAdminSeesWhoManagesAFacility() {
+    var facilityId = api.createFacility(adminToken);
+    var first = api.newManager(adminToken);
+    var second = api.newManager(adminToken);
+    var none = api.get(managersPath(facilityId), adminToken);
+    api.assignManagers(facilityId, adminToken, first.id(), second.id());
+
+    var listed = api.get(managersPath(facilityId), adminToken);
+
+    assertThat(none.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(none.getBody()).isEmpty();
+    assertThat(listed.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(listed.getBody().findValuesAsText("id"))
+        .containsExactlyInAnyOrder(first.id(), second.id());
+    assertThat(listed.getBody().findValuesAsText("email"))
+        .containsExactlyInAnyOrder(first.email(), second.email());
+    assertThat(listed.getBody().get(0).has("passwordHash")).isFalse();
+    assertProblem(
+        api.get(managersPath(UUID.randomUUID().toString()), adminToken),
+        HttpStatus.NOT_FOUND,
+        "NOT_FOUND");
   }
 
   @Test
