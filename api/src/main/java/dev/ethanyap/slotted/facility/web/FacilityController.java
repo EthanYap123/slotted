@@ -80,6 +80,14 @@ public class FacilityController {
         facilities.update(Principals.userId(jwt), facilityId, IfMatch.parse(ifMatch), changes));
   }
 
+  @GetMapping("/{facilityId}/managers")
+  @PreAuthorize("@facilityAccess.isAdmin(authentication)")
+  public List<ManagerResponse> managers(@PathVariable UUID facilityId) {
+    return facilities.managers(facilityId).stream()
+        .map(user -> new ManagerResponse(user.getId(), user.getFullName(), user.getEmail()))
+        .toList();
+  }
+
   @PutMapping("/{facilityId}/managers")
   @PreAuthorize("@facilityAccess.isAdmin(authentication)")
   @ResponseStatus(HttpStatus.NO_CONTENT)
@@ -138,6 +146,9 @@ public class FacilityController {
       return new OpeningPeriod(dayOfWeek, opensAt, closesAt);
     }
   }
+
+  /** Schema {@code FacilityManager}. */
+  public record ManagerResponse(UUID id, String fullName, String email) {}
 
   /** Body of {@code PUT /facilities/{id}/managers}. */
   public record ManagersRequest(@NotNull @Size(max = 50) Set<@NotNull UUID> userIds) {}

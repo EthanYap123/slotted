@@ -256,6 +256,22 @@ paths:
   /facilities/{facilityId}/managers:
     parameters:
       - $ref: '#/components/parameters/FacilityId'
+    get:
+      tags: [Facilities]
+      operationId: listFacilityManagers
+      summary: Who manages this facility, sorted by name
+      x-roles: [ADMIN]
+      responses:
+        '200':
+          description: Managers
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/FacilityManager' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
     put:
       tags: [Facilities]
       operationId: replaceFacilityManagers
@@ -1311,6 +1327,13 @@ components:
         name: { type: string, minLength: 1, maxLength: 100 }
         description: { type: string, maxLength: 1000 }
         location: { type: string, maxLength: 200 }
+    FacilityManager:
+      type: object
+      required: [id, fullName, email]
+      properties:
+        id: { type: string, format: uuid }
+        fullName: { type: string }
+        email: { type: string, format: email }
     OpeningHours:
       type: object
       required: [dayOfWeek, opensAt, closesAt]

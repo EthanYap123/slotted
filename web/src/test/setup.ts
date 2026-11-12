@@ -1,7 +1,11 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup } from '@testing-library/react'
+import { cleanup, configure } from '@testing-library/react'
 import { afterEach, vi } from 'vitest'
 import { session } from '../api/session'
+
+// findBy and waitFor give up after 1 second by default. With every test file running in
+// parallel, the booking timeline can take longer than that to appear, so allow 5 seconds.
+configure({ asyncUtilTimeout: 5000 })
 
 afterEach(() => {
   cleanup()

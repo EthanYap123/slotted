@@ -21,7 +21,7 @@ export function AppShell() {
       <a className="skip-link" href="#main">
         Skip to content
       </a>
-      <header className="header">
+      <header className="header no-print">
         <div className="header-inner">
           <Link to="/" className="brand">
             Slotted
@@ -32,6 +32,19 @@ export function AppShell() {
                 Book a room
               </NavLink>
               <NavLink to="/bookings">My bookings</NavLink>
+              {current.user.role !== 'STUDENT' && (
+                <>
+                  <NavLink to="/manage">Manage</NavLink>
+                  <NavLink to="/analytics">Analytics</NavLink>
+                </>
+              )}
+              {current.user.role === 'ADMIN' && (
+                <>
+                  <NavLink to="/admin/users">Users</NavLink>
+                  <NavLink to="/admin/facilities">Facilities</NavLink>
+                  <NavLink to="/admin/audit">Audit log</NavLink>
+                </>
+              )}
             </nav>
           )}
           <div className="header-actions">
@@ -55,7 +68,7 @@ export function AppShell() {
       <main id="main" className="main">
         <Outlet />
       </main>
-      <footer className="footer">
+      <footer className="footer no-print">
         <ThemeSetting />
       </footer>
     </div>

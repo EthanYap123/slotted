@@ -7,9 +7,17 @@ export interface ApiCall {
   path: string
   body: unknown
   token: string | null
+  headers: Record<string, string>
 }
 
-type Reply = { status?: number; body?: unknown } | (() => { status?: number; body?: unknown })
+/** `text` replies with that text instead of JSON, for endpoints such as the QR code. */
+interface ReplyValue {
+  status?: number
+  body?: unknown
+  text?: string
+}
+
+type Reply = ReplyValue | (() => ReplyValue)
 
 /**
  * Replaces fetch with a small routing table, keyed like "POST /auth/login" (query strings are part
@@ -30,6 +38,7 @@ export function fakeApi(routes: Record<string, Reply | Reply[]>) {
       path,
       body: typeof init?.body === 'string' ? (JSON.parse(init.body) as unknown) : undefined,
       token: headers.Authorization?.replace('Bearer ', '') ?? null,
+      headers,
     })
 
     const key = `${method} ${path}`
@@ -42,10 +51,13 @@ export function fakeApi(routes: Record<string, Reply | Reply[]>) {
     const chosen = Array.isArray(route) ? route[Math.min(index, route.length - 1)] : route
     const reply = typeof chosen === 'function' ? chosen() : chosen
     const status = reply?.status ?? 200
+    if (status === 204) {
+      return Promise.resolve(new Response(null, { status }))
+    }
     return Promise.resolve(
-      status === 204
-        ? new Response(null, { status })
-        : Response.json(reply?.body ?? {}, { status }),
+      reply?.text === undefined
+        ? Response.json(reply?.body ?? {}, { status })
+        : new Response(reply.text, { status }),
     )
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -74,4 +86,31 @@ export function authResponse(accessToken = 'access-1', refreshToken = 'refresh-1
     refreshToken,
     user: student,
   }
+}
+
+export const manager: CurrentUser = {
+  ...student,
+  id: '22222222-2222-2222-2222-222222222222',
+  email: 'mei@example.com',
+  fullName: 'Mei Lim',
+  role: 'MANAGER',
+  managedFacilityIds: ['f1'],
+}
+
+export const admin: CurrentUser = {
+  ...student,
+  id: '33333333-3333-3333-3333-333333333333',
+  email: 'raj@example.com',
+  fullName: 'Raj Kumar',
+  role: 'ADMIN',
+}
+
+/** Tokens for a signed-in user with the given profile. */
+export function authResponseFor(user: CurrentUser): AuthResponse {
+  return { ...authResponse(), user }
+}
+
+/** An empty page of results. */
+export function emptyPage(size = 20) {
+  return { items: [], page: { number: 0, size, totalElements: 0, totalPages: 0 } }
 }

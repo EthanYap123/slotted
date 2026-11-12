@@ -128,6 +128,9 @@ flowchart TB
 - TanStack Query owns all server data: caching, refetch on focus, and invalidation after a booking, cancel or check-in. After `SLOT_TAKEN` the availability query is refetched so the timeline shows reality.
 - The API client retries once after refreshing tokens on `401`, and shows a "waking the server" banner if the first request takes longer than a few seconds.
 - All times are formatted in Asia/Singapore ([ADR-0003](adr/0003-timezone-handling.md)).
+- Pages are grouped by role: students book and see their bookings; managers also get `/manage` (rooms, opening hours, blackouts, bookings and QR codes for their facilities) and `/analytics`; admins also get `/admin/users`, `/admin/facilities` and `/admin/audit`. The role check in the web app only decides what is shown. The API checks every permission itself.
+- Edits to rooms and facilities send the `version` they read as `If-Match`, so an edit made in the meantime is refused with `412` instead of being overwritten. Changes that can cancel bookings (opening hours, blackouts) are sent as a dry run first, and the screen lists what would be cancelled before the person confirms.
+- A room's QR code is fetched with the access token and shown as an image, never inserted into the page as markup.
 
 ## 4. Two users book the same slot at the same time
 
