@@ -2,18 +2,31 @@
 
 Slotted must cost nothing to build and run: free tiers only, no credit card, no paid domain. This page records the limits of every service the project uses, what happens when a limit is hit, and how the design stays inside them.
 
-**Last checked:** 29 October 2026. Free tiers change often, so check the linked pages again before adding or upgrading a service, and update this page in the same pull request.
+**Last checked:** limits 29 October 2026; the real accounts 14 November 2026 (see [Accounts](#accounts)). Free tiers change often, so check the linked pages again before adding or upgrading a service, and update this page in the same pull request.
 
 ## Summary
 
 | Service | Used for | Monthly cost | Card needed? |
 | --- | --- | --- | --- |
-| [Render](#render-api-hosting) (Free web service) | Spring Boot API as a Docker image, staging and production | $0 | Not for the Free plan in general, but Render may ask some accounts for card verification. **Open question, see below.** |
+| [Render](#render-api-hosting) (Free web service) | Spring Boot API as a Docker image, staging and production | $0 | No. Checked on the real account, see [Accounts](#accounts) |
 | [Neon](#neon-postgres) (Free) | PostgreSQL for staging and production | $0 | No |
 | [Vercel](#vercel-web-hosting) (Hobby) | React web app, preview and production | $0 | No |
 | [Brevo](#brevo-transactional-email) (Free) | Transactional email | $0 | No |
 | [Sentry](#sentry-error-tracking) (Developer) | Error tracking for API and web | $0 | No |
 | [GitHub Actions + GHCR](#github-actions-and-container-registry) | CI, CD, scheduled cleanup, Docker images | $0 | No |
+
+## Accounts
+
+Checked on 14 November 2026 by opening each dashboard while signed in. Slotted shares these accounts with my other projects, so limits that apply to a whole account or workspace are shared too.
+
+| Service | Plan | Card on file | Shared with other projects |
+| --- | --- | --- | --- |
+| Render | Hobby workspace, Free web services | None ("No card on file") | Yes: two Free web services already run in the workspace. 5.95 of the 750 free instance hours were used by 14 November. |
+| Neon | Free | None | Yes: three other projects. Compute (100 CU-hours) is counted per project, so a new `slotted` project gets its own. |
+| Vercel | Hobby | None ("No payment methods added") | Yes. Slotted's static build adds very little to the 100 GB and 1M request allowance. |
+| Brevo | Free, 300 emails per day | None ("You do not have any payment methods saved") | No, the account was created for Slotted on 14 November 2026. |
+
+Render has also been shown not to ask for a card when a Free web service is created from a prebuilt Docker image: one was created this way in the same workspace on 6 November 2026, and billing still shows no card.
 
 ## Render (API hosting)
 
@@ -34,7 +47,7 @@ Source: [render.com/docs/free](https://render.com/docs/free), [Instance types](h
 
 **How Slotted stays inside it**
 
-- Staging and production are two free services, so they share 750 hours. Both sleep when idle, so real usage is far lower than 2 × 720 hours.
+- Staging and production are two free services, so they share 750 hours, and the workspace's two other Free services use the same 750 ([Accounts](#accounts)). All of them sleep when idle, so real usage is far lower than 4 × 720 hours: the other two used under 6 hours in the first half of November.
 - The scheduled cleanup job wakes the API, and each wake keeps it up for about 15 minutes. Production runs the job hourly (about 24 × 15 min = 6 hours a day, ~180 hours a month). Staging runs it twice a day. Together with demo traffic this leaves a wide margin.
 - The JVM is tuned for 512 MB (small heap, Serial GC, limited thread pools), and startup is kept lean so cold starts stay short. Details come in Phase 4.
 - Correctness never depends on the server being awake: see [ADR-0004](adr/0004-lazy-evaluation-of-time-based-rules.md).
@@ -132,7 +145,7 @@ Sources: [Actions billing](https://docs.github.com/en/billing/concepts/product-b
 
 ## Open questions
 
-1. **Render card verification.** Render's Free plan does not require a card on paper, but recent reports and a Render staff reply say some new accounts are asked to verify with a card (a temporary $1 authorisation that is cancelled). This must be checked when the Render account is created in Phase 4. If Render asks for a card, work stops and a no-card alternative is chosen with Ethan before going further.
+1. ~~**Render card verification.**~~ **Resolved 14 November 2026:** the workspace has no card on file, and a Free web service from a prebuilt Docker image was created in it without one (see [Accounts](#accounts)). Render still defaults new services to a paid instance type, so Free must be selected by hand when the Slotted services are created.
 2. **Brevo sender address.** Sending without an owned domain works, but mail shows a shared Brevo sender. Accepted for a portfolio demo; revisit only if a free domain becomes available.
 
 ## Not used, and why
