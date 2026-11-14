@@ -34,6 +34,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
+- `docs/COSTS.md` records the free-tier accounts checked before deployment (#68): Render, Neon, Vercel and Brevo are all on free plans with no card on file, and Render's free hours are budgeted with the other services that share the workspace. The open question about Render asking for a card is resolved.
 - The API now runs on port 8090 locally, so it can run alongside other tools that use 8080. Hosts can still set the port with `PORT`.
 
 ### Fixed
