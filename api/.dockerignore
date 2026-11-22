@@ -1,0 +1,7 @@
+# Only what the image build needs. Local settings (.env) hold secrets and must never be copied in.
+*
+!mvnw
+!.mvn/
+!pom.xml
+!config/
+!src/main/
