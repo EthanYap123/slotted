@@ -69,7 +69,8 @@ Source: [neon.com/pricing](https://neon.com/pricing)
 
 **How Slotted stays inside it**
 
-- Production uses the main branch and staging uses a Neon branch of the same project, as planned. They share 100 CU-hours. If that becomes tight, staging moves to its own Neon project (allowed on Free) without any code change.
+- One Neon project, `slotted` (Singapore, Postgres 17 to match local development and the tests), with two branches: `production` (the default) and `staging`. Both are set never to expire; Neon offers to delete new branches after a day. They share 100 CU-hours. If that becomes tight, staging moves to its own Neon project (allowed on Free) without any code change.
+- The API connects to the direct (not pooled) endpoint, because Flyway runs migrations at startup and migrations need a session-level connection that a transaction pooler does not give.
 - The API's connection pool keeps **no idle connections** (`minimumIdle=0`, short idle timeout), so Neon can scale to zero a few minutes after the API goes quiet. An open idle connection would keep the compute running and burn CU-hours.
 - Seeded demo data is tiny (well under 50 MB). The audit log and email outbox are trimmed by the cleanup job so storage stays small.
 - 6 hours of restore history is short, so `docs/DEPLOYMENT.md` (Phase 4) will cover taking a `pg_dump` before risky migrations.
