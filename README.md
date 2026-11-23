@@ -46,6 +46,17 @@ On Windows, use `mvnw.cmd` instead of `./mvnw`.
 | API | `cd api && ./mvnw verify` | Unit and integration tests (integration tests need Docker for Testcontainers) |
 | Web | `cd web && npm run lint && npm run typecheck && npm test && npm run build` | ESLint, TypeScript, Vitest, production build |
 
+### Run the API as a container
+
+The image that runs on the host can be built and tried locally. The limits match Render's free plan, and the database URL points at the Compose Postgres from the host:
+
+```bash
+docker build -t slotted-api api
+docker run --rm -p 18090:8080 --memory=512m --cpus=0.1 --env-file api/.env   -e DB_URL=jdbc:postgresql://host.docker.internal:55434/slotted slotted-api
+```
+
+Use the port your Compose Postgres listens on in `DB_URL`. At 0.1 CPU, startup takes about a minute and a half.
+
 ### Environment files
 
 | File | Used by | Example |

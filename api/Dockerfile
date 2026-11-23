@@ -20,6 +20,8 @@ RUN ./mvnw -B -ntp -q package -DskipTests -Dspotless.check.skip=true -Dcheckstyl
     && java -Djarmode=tools -jar target/slotted-api.jar extract --layers --launcher --destination extracted
 
 FROM eclipse-temurin:21-jre-noble
+# Links the published image to the repository on GitHub.
+LABEL org.opencontainers.image.source="https://github.com/EthanYap123/slotted"
 WORKDIR /app
 
 RUN useradd --system --uid 10001 --no-create-home slotted

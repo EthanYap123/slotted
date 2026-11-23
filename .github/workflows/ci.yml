@@ -150,11 +150,36 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_COMMENTS: false
 
+  # On main only, after the API job passes: publish the image Render runs (docs/ARCHITECTURE.md
+  # section 8). Tagged with the commit SHA, so a deploy names an exact build, and with "main".
+  image:
+    name: Publish API image
+    needs: [api]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/ethanyap123/slotted-api
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Sign in to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Build
+        run: docker build --platform linux/amd64 -t "$IMAGE:${{ github.sha }}" -t "$IMAGE:main" api
+      - name: Push
+        run: |
+          docker push "$IMAGE:${{ github.sha }}"
+          docker push "$IMAGE:main"
+          echo "Pushed \`$IMAGE:${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+
   # The one check to require in branch protection. Skipped jobs (no relevant changes) count as passing.
   result:
     name: CI result
     if: always()
-    needs: [changes, api, web, compose, secrets]
+    needs: [changes, api, web, compose, secrets, image]
     runs-on: ubuntu-latest
     steps:
       - name: Fail if any job failed or was cancelled
