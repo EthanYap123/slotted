@@ -38,6 +38,13 @@ server:
   # Hosts set PORT. 8090 locally because 8080 is often taken by other tools.
   port: ${PORT:8090}
   shutdown: graceful
+  # Sized for a 512 MB, 0.1 CPU host: more threads than database connections only queue and cost
+  # memory (docs/COSTS.md).
+  tomcat:
+    threads:
+      max: 20
+      min-spare: 2
+    accept-count: 50
   error:
     include-stacktrace: never
 
