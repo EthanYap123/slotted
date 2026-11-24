@@ -4,7 +4,7 @@ A booking system for shared spaces such as study rooms, sports courts and meetin
 
 Key features: conflict-free booking under concurrency, recurring bookings, a waitlist with auto-promotion, QR code check-in, auto-release of no-shows after 15 minutes, email confirmations and an audit log.
 
-**Status:** Phase 3 done. Accounts, roles, facilities, rooms, conflict-free booking, blackouts, recurring bookings, waitlists, QR check-in, email notifications, the audit log and utilisation analytics work end to end, with screens for students, managers and admins. Phase 4 (deployment) is under way: the API runs on a free staging server at https://slotted-api-staging.onrender.com (it sleeps when idle, so the first request can take a minute or two). The web app and production come next.
+**Status:** Phase 3 done. Accounts, roles, facilities, rooms, conflict-free booking, blackouts, recurring bookings, waitlists, QR check-in, email notifications, the audit log and utilisation analytics work end to end, with screens for students, managers and admins. Phase 4 (deployment) is under way. The app is live at https://slotted-pearl.vercel.app, and a staging copy at https://slotted-staging.vercel.app is updated by every merge to `main`. The API runs on a free server that sleeps when idle, so the first request can take a minute or two. Real email, the cleanup schedule and demo accounts come next.
 
 ## Design documents
 
