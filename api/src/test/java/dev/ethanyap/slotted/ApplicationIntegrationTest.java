@@ -2,6 +2,7 @@ package dev.ethanyap.slotted;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Clock;
 import java.time.ZoneOffset;
 import org.junit.jupiter.api.Test;
@@ -31,6 +32,21 @@ class ApplicationIntegrationTest {
     var response = http.getForEntity("/actuator/health/readiness", String.class);
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+  }
+
+  @Test
+  void infoIsPublicAndShowsOnlyTheDeployedCommit() {
+    var response = http.getForEntity("/actuator/info", JsonNode.class);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(response.getBody().toString()).isEqualTo("{\"app\":{\"commit\":\"unknown\"}}");
+  }
+
+  @Test
+  void otherActuatorEndpointsAreNotPublic() {
+    var response = http.getForEntity("/actuator/env", String.class);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
   }
 
   @Test
