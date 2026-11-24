@@ -87,8 +87,8 @@ Source: [vercel.com/docs/plans/hobby](https://vercel.com/docs/plans/hobby)
 | Function invocations | 1,000,000 per month (Slotted serves static files only, so it uses none) |
 | Deployments | 100 per day |
 | Build machine | 2 vCPUs, 8 GB memory |
-| Projects | 200 |
-| Preview deployments | Included, one per pull request |
+| Projects | 200 (Slotted uses two: `slotted` and `slotted-staging`) |
+| Preview deployments | Included, not used: only the deploy workflow deploys |
 | Card | Not required |
 
 **What happens at the limit:** usage is paused, in most cases for 30 days. A static Vite build is a few hundred kilobytes, so the limits are far away.

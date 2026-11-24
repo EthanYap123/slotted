@@ -256,12 +256,12 @@ flowchart LR
     subgraph staging["Staging"]
         sapi["Render service<br/>slotted-api-staging"]
         sdb[("Neon branch<br/>staging")]
-        sweb["Vercel preview"]
+        sweb["Vercel project<br/>slotted-staging"]
     end
     subgraph prod["Production"]
         papi["Render service<br/>slotted-api"]
-        pdb[("Neon main branch")]
-        pweb["Vercel production"]
+        pdb[("Neon branch<br/>production")]
+        pweb["Vercel project<br/>slotted"]
     end
 
     dev --> pr --> ci --> main
@@ -276,7 +276,11 @@ flowchart LR
 - The same Docker image (by digest) is promoted from staging to production; it is never rebuilt for production.
 - Flyway runs migrations on startup, before the app accepts traffic. Migrations are written to be backward compatible with the previous release so a rollback of the app does not need a database rollback.
 - Health: Spring Boot Actuator `/actuator/health` (liveness and readiness), used by Render's health check.
-- Swagger UI is enabled on staging only.
+- `.github/workflows/deploy.yml` deploys. A commit that passes CI on `main` goes to staging; publishing a release sends that release's commit to production. It can also be run by hand, which is how to roll back to an older tag.
+- A deploy is done only when `/actuator/info` reports the new commit and `/actuator/health` is `UP`. The web app is then deployed and checked: deep links open, it calls the right API, and that API allows its origin and no other (`.github/scripts/check-web.sh`).
+- Staging and production are separate Vercel projects, so each has its own fixed address for CORS. Vercel does not build from Git; only the workflow deploys, so production web cannot change without a release.
+- A Render deploy hook does not change the image saved in the service's settings. The production service is set to the `production` image tag, which moves only after a working production deploy, so changing a setting there redeploys the released build and not `main`.
+- Swagger UI is not part of the API yet.
 - Details, secrets and rollback steps come in `docs/DEPLOYMENT.md` (Phase 4).
 
 ## 9. Cross-cutting concerns

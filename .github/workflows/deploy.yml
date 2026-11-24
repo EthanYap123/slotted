@@ -1,0 +1,214 @@
+name: Deploy
+
+# When CI passes on main, that commit goes to staging. Publishing a release deploys the release's
+# commit to production. Run it by hand to redeploy a commit, or to roll back to an older tag.
+#
+# Nothing is rebuilt for the API: CI published its image, and the same image digest is deployed to
+# staging and then to production (docs/ARCHITECTURE.md section 8).
+#
+# Each GitHub environment (staging, production) holds:
+#   variables: API_URL, WEB_URL, VERCEL_ORG_ID, VERCEL_PROJECT_ID
+#   secrets:   RENDER_DEPLOY_HOOK_URL, VERCEL_TOKEN
+# An environment with no API_URL counts as not set up yet: staging deploys are skipped with a
+# warning, and a release fails.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Where to deploy the selected branch or tag
+        type: choice
+        options: [staging, production]
+        required: true
+
+# One deploy per environment at a time, and never cancel one halfway through.
+concurrency:
+  group: deploy-${{ github.event_name == 'release' && 'production' || inputs.environment || 'staging' }}
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  IMAGE: ghcr.io/ethanyap123/slotted-api
+
+jobs:
+  target:
+    name: Pick what to deploy
+    # A CI run for a pull request can also report branch "main" (from a fork), so check the event.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      environment: ${{ steps.pick.outputs.environment }}
+      sha: ${{ steps.pick.outputs.sha }}
+      digest: ${{ steps.pick.outputs.digest }}
+      current: ${{ steps.pick.outputs.current }}
+    steps:
+      - name: Pick the environment, commit and image
+        id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          CHOSEN: ${{ inputs.environment }}
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          case "$EVENT" in
+            release) environment=production ;;
+            workflow_dispatch) environment="$CHOSEN" ;;
+            *) environment=staging ;;
+          esac
+
+          # Two CI runs on main can finish in the wrong order; never put an older commit on staging.
+          current=true
+          if [ "$EVENT" = workflow_run ]; then
+            head=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
+            if [ "$head" != "$SHA" ]; then
+              current=false
+              echo "::notice::$SHA is no longer the newest commit on main; leaving staging to the newer one."
+            fi
+          fi
+
+          # Only CI on main publishes images, so this also proves the commit was merged and passed.
+          if ! digest=$(docker buildx imagetools inspect "$IMAGE:$SHA" --format '{{.Manifest.Digest}}'); then
+            echo "::error::No API image for $SHA. Only commits that passed CI on main can be deployed."
+            exit 1
+          fi
+
+          {
+            echo "environment=$environment"
+            echo "sha=$SHA"
+            echo "digest=$digest"
+            echo "current=$current"
+          } >> "$GITHUB_OUTPUT"
+          echo "\`$SHA\` (\`$digest\`) to **$environment**" >> "$GITHUB_STEP_SUMMARY"
+
+  api:
+    name: API (Render)
+    needs: target
+    if: needs.target.outputs.current == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      packages: write
+    environment:
+      name: ${{ needs.target.outputs.environment }}
+      url: ${{ vars.API_URL }}
+    outputs:
+      configured: ${{ steps.configured.outputs.configured }}
+    env:
+      API_URL: ${{ vars.API_URL }}
+      ENVIRONMENT: ${{ needs.target.outputs.environment }}
+      SHA: ${{ needs.target.outputs.sha }}
+      DIGEST: ${{ needs.target.outputs.digest }}
+    steps:
+      - name: Sign in to GitHub Container Registry
+        if: needs.target.outputs.environment == 'production'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      # Render needs an existing image to create a service from, so the tag exists before the first
+      # production deploy. After that it only moves once a deploy has worked (last step).
+      - name: Create the production tag if it does not exist yet
+        if: needs.target.outputs.environment == 'production'
+        run: |
+          docker buildx imagetools inspect "$IMAGE:production" > /dev/null 2>&1 ||
+            docker buildx imagetools create -t "$IMAGE:production" "$IMAGE@$DIGEST"
+      - name: Check this environment is set up
+        id: configured
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ -n "$API_URL" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT" = release ]; then
+            echo "::error::The $ENVIRONMENT environment has no API_URL, so this release was not deployed."
+            exit 1
+          else
+            echo "::warning::The $ENVIRONMENT environment has no API_URL yet. Nothing was deployed."
+          fi
+      - name: Ask Render to deploy this image
+        if: steps.configured.outputs.configured == 'true'
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          [ -n "$HOOK" ] || { echo "::error::RENDER_DEPLOY_HOOK_URL is not set for $ENVIRONMENT."; exit 1; }
+          ref=$(jq -rn --arg v "$IMAGE@$DIGEST" '$v | @uri')
+          curl -fsS --max-time 60 -X POST -o /dev/null "$HOOK&imgURL=$ref"
+      - name: Wait until this commit is serving and healthy
+        if: steps.configured.outputs.configured == 'true'
+        run: |
+          # Render pulls the image and starts it (about 80 seconds on the free plan) before switching
+          # traffic over, so the old version can keep answering for a while.
+          commit=
+          for _ in $(seq 1 80); do
+            commit=$(curl -fsS --max-time 20 "$API_URL/actuator/info" 2> /dev/null | jq -r '.app.commit // empty' || true)
+            [ "$commit" = "$SHA" ] && break
+            echo "Serving ${commit:-nothing with a commit yet}, waiting..."
+            sleep 10
+          done
+          [ "$commit" = "$SHA" ] || { echo "::error::$API_URL never reported $SHA"; exit 1; }
+          # Includes the database, so it also confirms the connection and the migrations.
+          curl -fsS --retry 3 --retry-all-errors --max-time 60 "$API_URL/actuator/health" |
+            jq -e '.status == "UP"'
+      # A deploy hook does not change the image saved in Render's settings. The production service is
+      # set to this tag, so changing a setting there redeploys the released build, not main.
+      - name: Move the production tag
+        if: steps.configured.outputs.configured == 'true' && needs.target.outputs.environment == 'production'
+        run: docker buildx imagetools create -t "$IMAGE:production" "$IMAGE@$DIGEST"
+
+  web:
+    name: Web (Vercel)
+    needs: [target, api]
+    if: needs.api.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    environment:
+      name: ${{ needs.target.outputs.environment }}
+      url: ${{ vars.WEB_URL }}
+    env:
+      API_URL: ${{ vars.API_URL }}
+      WEB_URL: ${{ vars.WEB_URL }}
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL: npx --yes vercel@65.3.1
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - name: Check the settings
+        working-directory: .
+        run: |
+          for name in WEB_URL VERCEL_ORG_ID VERCEL_PROJECT_ID VERCEL_TOKEN; do
+            [ -n "${!name}" ] || { echo "::error::$name is not set for this environment."; exit 1; }
+          done
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.target.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: Build
+        env:
+          VITE_API_URL: ${{ vars.API_URL }}
+        run: |
+          $VERCEL pull --yes --environment=production --token="$VERCEL_TOKEN"
+          $VERCEL build --prod --token="$VERCEL_TOKEN"
+      # Each environment is its own Vercel project, so both use that project's production domain.
+      - name: Deploy
+        run: $VERCEL deploy --prebuilt --prod --yes --token="$VERCEL_TOKEN"
+      - name: Check the deployed app
+        run: bash ../.github/scripts/check-web.sh "$WEB_URL" "$API_URL"

@@ -52,12 +52,21 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health, info
+  info:
+    # Shows the info.* values below and nothing else from the environment.
+    env:
+      enabled: true
   endpoint:
     health:
       probes:
         enabled: true
       show-details: never
+
+info:
+  app:
+    # Set when the image is built, so a deploy can check which build is serving.
+    commit: ${GIT_COMMIT:unknown}
 
 slotted:
   auth:

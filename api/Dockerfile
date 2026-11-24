@@ -45,5 +45,9 @@ ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=45 -XX:+UseSerialGC -Xss512k \
     TZ=UTC \
     PORT=8080
 
+# The commit this image was built from, shown by /actuator/info. Last, so it does not bust the cache.
+ARG GIT_COMMIT=unknown
+ENV GIT_COMMIT=$GIT_COMMIT
+
 EXPOSE 8080
 ENTRYPOINT ["java", "org.springframework.boot.loader.launch.JarLauncher"]
