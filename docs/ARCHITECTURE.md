@@ -278,6 +278,7 @@ flowchart LR
 - Health: Spring Boot Actuator `/actuator/health` (liveness and readiness), used by Render's health check.
 - `.github/workflows/deploy.yml` deploys. A commit that passes CI on `main` goes to staging; publishing a release sends that release's commit to production. It can also be run by hand, which is how to roll back to an older tag.
 - A deploy is done only when `/actuator/info` reports the new commit and `/actuator/health` is `UP`. The web app is then deployed and checked: deep links open, it calls the right API, and that API allows its origin and no other (`.github/scripts/check-web.sh`).
+- Redeploying a commit that is already serving is the one case the wait cannot see: the old instance already reports that commit, so check the host's deploy log as well.
 - Staging and production are separate Vercel projects, so each has its own fixed address for CORS. Vercel does not build from Git; only the workflow deploys, so production web cannot change without a release.
 - A Render deploy hook does not change the image saved in the service's settings. The production service is set to the `production` image tag, which moves only after a working production deploy, so changing a setting there redeploys the released build and not `main`.
 - Swagger UI is not part of the API yet.
